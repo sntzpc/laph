@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"/>
   <link rel="stylesheet" href="style.css"/>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext x='10' y='54' font-size='56'%3E📑%3C/text%3E%3C/svg%3E" />
 
   <!-- Libs -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -57,7 +58,7 @@
         <!-- Dashboard Page -->
         <div id="dashboard-page" class="page active">
           <div class="stats-container">
-            <div class="stat-card stat-green">
+            <div class="stat-card stat-green" id="stat-total-peserta">
               <div class="stat-icon"><i class="fas fa-user-check"></i></div>
               <div class="stat-info"><h3>0</h3><p>Total Peserta</p></div>
             </div>
@@ -296,6 +297,43 @@
                   </div>
                 </div>
               </div>
+              <!-- Tambahan: Import Data Aktual + Template -->
+                <div class="row">
+                <div class="col">
+                    <div class="card" style="text-align:center;padding:30px;">
+                    <i class="fas fa-file-excel" style="font-size:3rem;color:var(--primary);margin-bottom:15px;"></i>
+                    <h3>Import Data Aktual</h3>
+                    <p style="margin-bottom:20px;">Impor laporan harian (NIK, Tgl Laporan, Tgl & Jam Kirim, Nilai)</p>
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                        <button class="btn btn-primary" id="btn-upload-actual"><i class="fas fa-upload"></i> Pilih File</button>
+                        <button class="btn btn-outline" id="btn-download-actual-template"><i class="fas fa-download"></i> Unduh Template (.xlsx)</button>
+                    </div>
+                    <input type="file" id="file-actual" accept=".csv,.xlsx,.xls" style="display:none;"/>
+                    <small style="display:block;margin-top:10px;color:#666;">
+                        Header yang diterima: <code>nik</code>, <code>report_date</code>, <code>send_date</code>, <code>send_time</code>, <code>score</code>.<br/>
+                        Tanggal: <b>dd/mm/yyyy</b>, Waktu: <b>HH:MM</b>. Nilai kosong akan dihitung otomatis.
+                    </small>
+                    </div>
+                </div>
+                </div>
+                <!-- Tambahan: Manajemen Data Lokal -->
+                <div class="row" style="margin-top:16px;">
+                <div class="col">
+                    <div class="card">
+                    <div class="card-header"><h4>Manajemen Data Lokal</h4></div>
+                    <div class="card-body">
+                        <p style="color:#555;margin-top:0;">Hapus data yang tersimpan di perangkat ini (localStorage). Gunakan dengan hati-hati.</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-outline" id="btn-clear-reports"><i class="fas fa-trash"></i> Hapus Laporan</button>
+                        <button class="btn btn-outline" id="btn-clear-participants"><i class="fas fa-trash"></i> Hapus Master Peserta</button>
+                        <button class="btn btn-outline" id="btn-clear-queues"><i class="fas fa-trash"></i> Hapus Antrean (Pending/Gagal)</button>
+                        <button class="btn btn-red" id="btn-clear-all"><i class="fas fa-exclamation-triangle"></i> Hapus Semua Data Lokal</button>
+                        </div>
+                        <small style="display:block;margin-top:10px;color:#777;">Tips: Setelah menghapus data, kamu bisa tarik ulang dari server via <b>Sinkronisasi</b>.</small>
+                    </div>
+                    </div>
+                </div>
+                </div>
             </div>
           </div>
         </div>

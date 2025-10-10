@@ -66,6 +66,38 @@ async function apiPost(body = {}) {
   return r.json();
 }
 
+// ==== Prefetch semua peserta dari server ====
+// 1) Coba backend baru dengan parameter limit besar
+// 2) Jika backend masih versi lama (tetap 25), fallback fan-out query by prefix (0-9 + a-z)
+async function fetchAllParticipants(){
+  // --- Strategi 1: coba limit besar (butuh patch GAS di bawah)
+  try{
+    const res = await apiGet({ action:'listParticipants', q:'', limit: 10000 });
+    if (res && res.ok && Array.isArray(res.data) && res.data.length >= 26) {
+      DB.setParticipants(res.data);
+      return;
+    }
+  } catch(_) { /* lanjut ke strategi 2 */ }
+
+  // --- Strategi 2: kompatibel backend lama (cap 25) — fan-out by prefix
+  const prefixes = ['0','1','2','3','4','5','6','7','8','9']
+    .concat(Array.from({length:26}, (_,i)=>String.fromCharCode(97+i))); // a..z
+  const merged = byNikMap(DB.getParticipants()); // gunakan helper yg sdh ada
+
+  // Jalankan bertahap agar aman thd rate-limit
+  for (const pfx of prefixes){
+    try{
+      const r = await apiGet({ action:'listParticipants', q: pfx });
+      if (r && r.ok && Array.isArray(r.data)){
+        r.data.forEach(p=>{
+          if (p && p.nik) merged[p.nik] = { ...(merged[p.nik]||{}), ...p, is_active:true };
+        });
+      }
+    } catch(_){}
+  }
+  DB.setParticipants(Object.values(merged));
+}
+
 /* ===================== 3) UTIL TANGGAL ===================== */
 function dd(v){ return String(v).padStart(2,'0'); }
 function toDDMMYYYY(d){
@@ -94,6 +126,45 @@ function fmtWIBddmmyyyy(input){
     return `${day}/${mon}/${yr}`;
   }
   return input;
+}
+
+/* ===================== [HOL] HOLIDAYS UTIL & STYLE ===================== */
+
+// Inject gaya minimal jika class belum ada (buat warna libur & sunday header)
+(function injectHolidayStyles(){
+  const id = 'holiday-styles';
+  if (document.getElementById(id)) return;
+  const css = `
+    /* Header tanggal Minggu: angka tanggal berwarna pink */
+    th.sun-head { color:#ec4899; font-weight:700; }
+
+    /* Header tanggal libur nasional: latar abu-abu */
+    th.hol-head { background:#e5e7eb !important; color:#111; }
+
+    /* Sel kolom libur nasional (kosong maupun berisi nilai) */
+    td.hol-col { background:#f3f4f6 !important; }
+
+    /* Jika Minggu & kosong: sudah ada .sun-pink di sel lama, kita pastikan warnanya lembut */
+    td.sun-pink { background:#ffe4e6 !important; }
+  `;
+  const style = document.createElement('style');
+  style.id = id; style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+// Simpan libur sebagai ISO (yyyy-mm-dd) di localStorage lalu dipakai per-bulan
+function isoOf(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+function buildHolidaySetForMonth(y, m){
+  const list = DB.getHolidays(); // array ISO 'YYYY-MM-DD'
+  const set = new Set();
+  list.forEach(iso=>{
+    const dt = new Date(iso+'T00:00:00');
+    if (!isNaN(dt) && dt.getFullYear()===y && dt.getMonth()===m){
+      set.add(dt.getDate()); // simpan nomor tanggal
+    }
+  });
+  return set; // Set<number>
 }
 
 /* ===================== 3a) UTIL WAKTU & SORT ===================== */
@@ -223,6 +294,105 @@ function getSelectedMonthRange(){
   return { y, m, nDays };
 }
 
+/* ===================== A) AGGREGATE & PAGINATION HELPERS ===================== */
+
+// Kategori total (untuk donut & tabel)
+function scoreBucket(total){
+  if (total >= 90) return { key:'A', label:'Hijau (90–100)', range:[90,100] };
+  if (total >= 76) return { key:'B', label:'Kuning (76–89)', range:[76,89] };
+  if (total >= 60) return { key:'C', label:'Merah (60–75)', range:[60,75] };
+  if (total > 0)   return { key:'D', label:'Hitam (<60)', range:[1,59] };
+  return { key:'Z', label:'Tanpa nilai (0)', range:[0,0] };
+}
+
+// Agregasi nilai per peserta dalam bulan + filter dimensi yang aktif
+function aggregateScoresByParticipant(){
+  const { y, m, nDays } = getSelectedMonthRange();
+  const participants = DB.getParticipants().filter(p => String(p.is_active)!=='false');
+
+  // Filter peserta by dimensi (program, group, region, unit, divisi)
+  const by = { program:'program', group:'group', region:'region', unit:'unit', divisi:'divisi' };
+  const pass = (p) => Object.entries(by).every(([fk, field])=>{
+    const v = (FILTER[fk]||'').trim();
+    return !v || String(p[field]||'').toLowerCase() === v.toLowerCase();
+  });
+  const baseP = participants.filter(pass);
+
+  // Index laporan bulan-terpilih
+  const reports = applyReportFilters(DB.getReports()); // sudah tersaring BULAN + dimensi
+  const repMap = {};
+  for (const r of reports){
+    const ddmmyyyy = fmtWIBddmmyyyy(r.report_date);
+    const key = r.nik + '|' + ddmmyyyy;
+    repMap[key] = Number(r.score);
+  }
+
+  // Hitung total (cap 0..100) per peserta
+  return baseP.map(p=>{
+    let total = 0;
+    for (let d=1; d<=nDays; d++){
+      const ddmmyyyy = `${dd(d)}/${dd(m+1)}/${y}`;
+      const sc = repMap[p.nik + '|' + ddmmyyyy];
+      if (typeof sc === 'number' && !Number.isNaN(sc)) total += sc;
+    }
+    total = Math.max(0, Math.min(100, Math.round(total)));
+    return { ...p, total, bucket: scoreBucket(total) };
+  });
+}
+
+// ===== Pagination (ellipsis) — reusable
+function buildEllipsisPages(cur, total, span=1){
+  // ex: for total=20, cur=10 → 1 … 9 10 11 … 20
+  if (total <= 7) return Array.from({length:total}, (_,i)=>({type:'page', val:i+1}));
+  const out = [];
+  const push = (t,v)=> out.push({type:t, val:v});
+  push('page',1);
+  if (cur > 3+span) push('ellipsis', '...');
+  const start = Math.max(2, cur - span);
+  const end   = Math.min(total-1, cur + span);
+  for (let i=start; i<=end; i++) push('page', i);
+  if (cur < total-(2+span)) push('ellipsis', '...');
+  push('page', total);
+  return out;
+}
+
+function renderPagination(host, totalRows, pageSize, state, onGoPage){
+  const infoEl = host.querySelector('.pagination-info');
+  const ctrlEl = host.querySelector('.pagination-controls .page-numbers');
+  const sizeSel= host.querySelector('.pagination-controls .page-size-select');
+
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  state.page = Math.max(1, Math.min(state.page || 1, totalPages));
+
+  if (infoEl) infoEl.textContent = `Menampilkan ${totalRows} data`;
+  if (sizeSel){
+    // Pertahankan pilihan
+    sizeSel.value = String(state.size || pageSize);
+    sizeSel.onchange = () => {
+      state.size = parseInt(sizeSel.value,10) || pageSize;
+      state.page = 1;
+      onGoPage(1, state.size);
+    };
+  }
+  if (ctrlEl){
+    ctrlEl.innerHTML = '';
+    const nodes = buildEllipsisPages(state.page, totalPages, 1);
+    nodes.forEach(n=>{
+      if (n.type==='ellipsis'){
+        const span = document.createElement('span');
+        span.textContent = '…'; span.style.margin = '0 6px'; span.style.userSelect='none';
+        ctrlEl.appendChild(span);
+      } else {
+        const btn = document.createElement('button');
+        btn.textContent = n.val;
+        if (n.val === state.page) btn.classList.add('active');
+        btn.onclick = () => { state.page = n.val; onGoPage(state.page, state.size||pageSize); };
+        ctrlEl.appendChild(btn);
+      }
+    });
+  }
+  return { totalPages, current: state.page };
+}
 
 
 /* ======= PENILAIAN (SCORE) ======= */
@@ -465,9 +635,11 @@ async function deleteReportFlow({ key, id }) {
 
 /* ===================== 4) DB (localStorage) ===================== */
 const DB = (() => {
-  const KEYS = { P:'kmp.participants', R:'kmp.reports', RP:'kmp.reports_pending', RF:'kmp.reports_failed', U:'kmp.users', M:'kmp.meta' };
+  const KEYS = { P:'kmp.participants', R:'kmp.reports', RP:'kmp.reports_pending', RF:'kmp.reports_failed', U:'kmp.users', M:'kmp.meta', H:'kmp.holidays' };
   const read  = (k,def)=>{ try{ return JSON.parse(localStorage.getItem(k)||JSON.stringify(def)); }catch(_){ return def; } };
   const write = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+  const getHolidays = () => read(KEYS.H, []); 
+  const setHolidays = (rows) => write(KEYS.H, Array.isArray(rows)? rows: []);
 
   const getParticipants = () => read(KEYS.P, []);
   const setParticipants = (rows) => write(KEYS.P, Array.isArray(rows)? rows: []);
@@ -512,7 +684,19 @@ const DB = (() => {
     }
     }
 
-  return { getParticipants, setParticipants, getReportByKey, deleteReportByKey, updateReportByKey, getReports, setReports, upsertReportLocal, getPending, setPending, addPending, removePendingByKey,  getFailed, setFailed, addFailed, removeFailedByKey, getUsers, setUsers, getMeta, setMeta };
+
+  return { // Tambahan helper penghapusan data lokal
+    clearReports(){ localStorage.removeItem('kmp.reports'); },
+    clearParticipants(){ localStorage.removeItem('kmp.participants'); },
+    clearQueues(){ localStorage.removeItem('kmp.reports_pending'); localStorage.removeItem('kmp.reports_failed'); },
+    clearUsers(){ localStorage.removeItem('kmp.users'); },
+    clearMeta(){ localStorage.removeItem('kmp.meta'); },
+    clearAll(){
+    this.clearReports(); this.clearParticipants(); this.clearQueues(); this.clearUsers(); this.clearMeta();
+    },
+    getParticipants, setParticipants, getReportByKey, deleteReportByKey, updateReportByKey, getReports, setReports, upsertReportLocal, 
+    getPending, setPending, addPending, removePendingByKey,  getFailed, setFailed, addFailed, removeFailedByKey, getUsers, setUsers, 
+    getMeta, setMeta, getHolidays, setHolidays };
 })();
 
 /* ===================== 5) RENDER ===================== */
@@ -528,10 +712,277 @@ function renderStats(){
   if (cards[2]) cards[2].textContent = String(reports.length - totalSync);
   if (cards[3]) cards[3].textContent = String(totalSync);
 }
+
+/* ===================== B) DASHBOARD RENDERERS ===================== */
+
+const DASH = {
+  sortCol: 'total', // total | nik | nama | program | unit | region | divisi
+  sortDir: 'desc',
+  page: 1,
+  size: 20,
+  search: ''
+};
+
+// Ambil elemen tabel Dashboard
+function getDashboardTableRefs(){
+  const root = document.querySelector('#dashboard-page');
+  return {
+    root,
+    tbody: root?.querySelector('.card-body .data-table tbody'),
+    hostPag: root?.querySelector('.card-body .pagination'),
+    sizeSel: root?.querySelector('.card-body .page-size-select'),
+    searchInput: root?.querySelector('.card-header input[type="text"]')
+  };
+}
+
+// Render bar chart Top-10
+function renderTop10Chart(agg){
+  const ctx = document.getElementById('topScoresChart')?.getContext('2d');
+  if (!ctx || !window.Chart) return;
+
+  const top10 = [...agg].sort((a,b)=> b.total - a.total).slice(0,10);
+  const labels = top10.map(x => (x.nama || x.nik || '').toString());
+  const data   = top10.map(x => x.total);
+
+  // destroy existing if any
+  if (renderTop10Chart._chart) { renderTop10Chart._chart.destroy(); }
+  renderTop10Chart._chart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Nilai Total', data }] },
+    options:{
+      responsive:true,
+      scales:{ y:{ beginAtZero:true, max:100 } },
+      plugins:{ tooltip:{ callbacks:{ label:(ctx)=> ` ${ctx.raw}` } } }
+    }
+  });
+}
+
+// Render donut Distribusi (klik segmen → buka modal daftar peserta dalam range)
+function renderDistributionChart(agg){
+  const ctx = document.getElementById('scoreDistributionChart')?.getContext('2d');
+  if (!ctx || !window.Chart) return;
+
+  const buckets = [
+    {key:'A', label:'Hijau (90–100)', where:(t)=>t>=90},
+    {key:'B', label:'Kuning (76–89)', where:(t)=>t>=76 && t<=89},
+    {key:'C', label:'Merah (60–75)', where:(t)=>t>=60 && t<=75},
+    {key:'D', label:'Hitam (<60)',   where:(t)=>t>0 && t<60}
+  ];
+  const counts = buckets.map(b => agg.filter(p => b.where(p.total)).length);
+
+  if (renderDistributionChart._chart) renderDistributionChart._chart.destroy();
+  const chart = new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels:buckets.map(b=>b.label), datasets:[{ data:counts }] },
+    options:{
+      responsive:true,
+      plugins:{ legend:{ position:'bottom' } },
+      onClick: (evt, elements)=>{
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        const b = buckets[idx];
+        const rows = agg
+          .filter(p => b.where(p.total))
+          .sort((a,b)=> b.total - a.total);
+        openParticipantListModal({
+          title: `Peserta – ${b.label}`,
+          rows,
+          showTotal:true
+        });
+      }
+    }
+  });
+  renderDistributionChart._chart = chart;
+}
+
+// Modal daftar peserta (klik “Total Peserta” atau dari donut)
+function openParticipantListModal({ title='Daftar Peserta', rows=[], showTotal=false }={}){
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:2200;display:flex;align-items:center;justify-content:center;';
+  const card = document.createElement('div');
+  card.style.cssText = 'width:min(900px,96vw);max-height:90vh;background:#fff;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.3);overflow:hidden;display:flex;flex-direction:column;';
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;">
+      <h3 style="margin:0;color:var(--primary);font-size:1.05rem;">${title}</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="modal-program" class="form-control" style="min-width:160px"></select>
+        <button class="btn btn-outline btn-sm" id="modal-close">Tutup</button>
+      </div>
+    </div>
+    <div style="padding:12px;overflow:auto;">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>No</th><th>NIK</th><th>Nama</th><th>Program</th><th>Divisi</th><th>Unit</th><th>Region</th>${showTotal?'<th>Total</th>':''}
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="pagination" style="margin-top:8px;">
+        <div class="pagination-info">Menampilkan 0 data</div>
+        <div class="pagination-controls">
+          <select class="form-control page-size-select" style="width:auto;">
+            <option>20</option><option>40</option><option>80</option><option>100</option><option>500</option>
+          </select>
+          <div class="page-numbers"><button class="active">1</button></div>
+        </div>
+      </div>
+    </div>
+  `;
+  backdrop.appendChild(card); document.body.appendChild(backdrop);
+  const close = ()=> backdrop.remove();
+  card.querySelector('#modal-close').onclick = close;
+
+  // Isi pilihan program
+  const progSel = card.querySelector('#modal-program');
+  const programs = uniq(DB.getParticipants().filter(p=>String(p.is_active)!=='false').map(p=>p.program));
+  progSel.innerHTML = `<option value="">Semua Program</option>` + programs.map(p=>`<option>${p}</option>`).join('');
+
+  const state = { page:1, size:20 };
+  const all = rows.length ? rows : DB.getParticipants().filter(p => String(p.is_active)!=='false');
+
+  function applyFilter(data){
+    const v = progSel.value || '';
+    if (!v) return data;
+    return data.filter(p => String(p.program||'').toLowerCase() === v.toLowerCase());
+  }
+
+  function renderModalTable(){
+    const tbody = card.querySelector('tbody');
+    const hostPag = card.querySelector('.pagination');
+    const data = applyFilter(all);
+    // paging
+    const go = (pg, size)=>{ state.page=pg; state.size=size||state.size; renderModalTable(); };
+    renderPagination(hostPag, data.length, state.size, state, go);
+    const start = (state.page-1)*state.size;
+    const pageRows = data.slice(start, start+state.size);
+
+    tbody.innerHTML = '';
+    pageRows.forEach((p,i)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${start+i+1}</td>
+        <td>${p.nik||''}</td>
+        <td>${p.nama||''}</td>
+        <td>${p.program||''}</td>
+        <td>${p.divisi||''}</td>
+        <td>${p.unit||''}</td>
+        <td>${p.region||''}</td>
+        ${showTotal?`<td>${p.total||0}</td>`:''}
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  progSel.onchange = ()=>{ state.page=1; renderModalTable(); };
+  renderModalTable();
+}
+
+// Tabel Leaderboard di Dashboard (urut dari total tertinggi + sorting header + search + paging elipsis)
+function renderDashboardTable(agg){
+  const { tbody, hostPag, searchInput } = getDashboardTableRefs();
+  if (!tbody || !hostPag) return;
+
+  // filter pencarian
+  const q = (DASH.search||'').toLowerCase();
+  let data = agg.filter(x=>{
+    const s = `${x.nik||''} ${x.nama||''} ${x.program||''} ${x.divisi||''} ${x.unit||''} ${x.region||''}`.toLowerCase();
+    return s.includes(q);
+  });
+
+  // sorting
+  const cmp = {
+    total:  (a,b)=> a.total - b.total,
+    nik:    (a,b)=> String(a.nik||'').localeCompare(String(b.nik||'')),
+    nama:   (a,b)=> String(a.nama||'').localeCompare(String(b.nama||'')),
+    program:(a,b)=> String(a.program||'').localeCompare(String(b.program||'')),
+    divisi: (a,b)=> String(a.divisi||'').localeCompare(String(b.divisi||'')),
+    unit:   (a,b)=> String(a.unit||'').localeCompare(String(b.unit||'')),
+    region: (a,b)=> String(a.region||'').localeCompare(String(b.region||'')),
+  };
+  const sorter = cmp[DASH.sortCol] || cmp.total;
+  data.sort(sorter); if (DASH.sortDir==='desc') data.reverse();
+
+  // paging
+  const go = (pg, size)=>{ DASH.page=pg; DASH.size=size||DASH.size; renderDashboardTable(agg); };
+  renderPagination(hostPag, data.length, DASH.size, DASH, go);
+  const start = (DASH.page-1)*DASH.size;
+  const pageRows = data.slice(start, start+DASH.size);
+
+  // render rows
+  tbody.innerHTML = '';
+  pageRows.forEach((p,i)=>{
+    const cat = p.bucket.key;
+    const catLabel = p.bucket.label;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${start+i+1}</td>
+      <td>${p.nik||''}</td>
+      <td>${p.nama||''}</td>
+      <td>${p.unit||''}</td>
+      <td>${p.region||''}</td>
+      <td>${totalScoreBadge(p.total)}</td>
+      <td>${catLabel}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // search binding (sekali)
+  if (searchInput && !searchInput._bound){
+    searchInput._bound = true;
+    let t=null;
+    searchInput.addEventListener('input', e=>{
+      clearTimeout(t);
+      t=setTimeout(()=>{ DASH.search = e.target.value||''; DASH.page=1; renderDashboardTable(agg); }, 180);
+    });
+  }
+
+  // header sorting (sekali)
+  const mapIdx = {1:'nik',2:'nama',3:'unit',4:'region',5:'total',6:'total'}; // 5=nilai badge; 6=kategori (tetap sort 'total' saat klik Kategori)
+  const ths = document.querySelectorAll('#dashboard-page .data-table thead th');
+  if (ths && !ths._bound){
+    ths._bound = true;
+    ths.forEach((th, idx)=>{
+      const key = mapIdx[idx];
+      if (!key) return;
+      th.style.cursor='pointer';
+      th.title='Klik untuk sort';
+      th.addEventListener('click', ()=>{
+        if (DASH.sortCol === key) DASH.sortDir = (DASH.sortDir==='asc'?'desc':'asc');
+        else { DASH.sortCol = key; DASH.sortDir='asc'; }
+        renderDashboardTable(agg);
+      });
+    });
+  }
+}
+
+// Render keseluruhan Dashboard (dipanggil saat buka tab Dashboard atau setelah sync/filter)
+function renderDashboard(){
+  // Pastikan kartu Total Peserta bisa di-klik
+  const cardTotal = document.getElementById('stat-total-peserta') || document.querySelector('#dashboard-page .stat-card.stat-green');
+  if (cardTotal && !cardTotal._bound){
+    cardTotal._bound = true;
+    cardTotal.style.cursor = 'pointer';
+    cardTotal.title = 'Klik untuk melihat daftar peserta';
+    cardTotal.addEventListener('click', ()=>{
+      const agg = aggregateScoresByParticipant();
+      openParticipantListModal({ title:'Daftar Peserta (semua program)', rows:agg, showTotal:true });
+    });
+  }
+
+  const agg = aggregateScoresByParticipant();
+  renderTop10Chart(agg);
+  renderDistributionChart(agg);
+  renderDashboardTable(agg);
+}
+
 function renderReportsTable(){
   const tbody = document.querySelector('#tabular-content table.data-table tbody'); if (!tbody) return;
+  const hostPag = document.querySelector('#tabular-content .pagination');
 
-  // ambil & filter
+  // ambil & filter (per laporan)
   const allRows = DB.getReports();
   let rows = applyReportFilters(allRows);
 
@@ -561,14 +1012,22 @@ function renderReportsTable(){
   rows.sort(sorter);
   if (SORT.dir==='desc') rows.reverse();
 
+  // === NEW: paging elipsis untuk Tabular ===
+  renderReportsTable._state = renderReportsTable._state || { page:1, size:20 };
+  const state = renderReportsTable._state;
+  const go = (pg,size)=>{ state.page=pg; state.size=size||state.size; renderReportsTable(); };
+  const { } = renderPagination(hostPag, rows.length, state.size, state, go);
+  const start = (state.page-1)*(state.size);
+  const pageRows = rows.slice(start, start+state.size);
+
   // render
   tbody.innerHTML = '';
-  rows.forEach((r, idx)=>{
+  pageRows.forEach((r, idx)=>{
     const key = r._key || (r.nik + '|' + r.report_date);
     const P = pMap[r.nik] || {};
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${idx+1}</td>
+      <td>${start+idx+1}</td>
       <td>${r.nik||''}</td>
       <td>${P.nama||r.nama||''}</td>
       <td>${fmtWIBddmmyyyy(r.report_date)||''}</td>
@@ -651,6 +1110,30 @@ function renderUsersTable(){
 function renderFailedSyncPage(){
   const tbody = document.querySelector('#failed-sync-tbody'); 
   if (!tbody) return;
+
+  // === NEW: banner ringkasan import terakhir (jika ada)
+  const container = tbody.closest('.card-body');
+  if (container && !container.querySelector('#import-errors-banner')) {
+    const banner = document.createElement('div');
+    banner.id = 'import-errors-banner';
+    banner.style.cssText = 'margin-bottom:12px;padding:10px;border:1px solid #f5c2c7;background:#f8d7da;color:#842029;border-radius:6px;display:none;';
+    container.prepend(banner);
+  }
+  const meta = DB.getMeta();
+  const banner = document.getElementById('import-errors-banner');
+  if (banner) {
+    const errs = meta.lastImportErrors || [];
+    if (errs.length) {
+      // tampilkan 3 contoh alasan pertama
+      const examples = errs.slice(0, 3).map(e => `• [${e.reason||'error'}] ${e.message||''}`).join('<br>');
+      banner.innerHTML = `<strong>${errs.length} baris gagal saat import terakhir.</strong><br>${examples}${errs.length>3?'<br>…':''} <br><small>Periksa tabel di bawah, lalu klik <i class="fas fa-redo"></i> untuk coba sinkron ulang atau <i class="fas fa-times"></i> untuk hapus dari daftar.</small>`;
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // === render tabel gagal (kode lama tetap) ===
   const rows = DB.getFailed();
   tbody.innerHTML = '';
   rows.forEach((r, i)=>{
@@ -671,7 +1154,7 @@ function renderFailedSyncPage(){
     tbody.appendChild(tr);
   });
 
-  // action
+  // action (tetap)
   tbody.onclick = async (e)=>{
     const btn = e.target.closest('button');
     if (!btn) return;
@@ -691,7 +1174,10 @@ function renderFailedSyncPage(){
           renderFailedSyncPage(); renderReportsTable(); renderStats(); renderQueueInfo();
           toast('Berhasil disinkron.');
         } else {
-          toast('Masih gagal: ' + (res.error||'unknown'));
+          // tampilkan alasan dari backend bila ada
+          const reason = (res && (res.message || res.error)) || 'unknown';
+          DB.updateReportByKey(key, {}); // no-op: placeholder bila ingin menandai
+          toast('Masih gagal: ' + reason);
         }
       } catch(err){
         toast('Jaringan bermasalah: ' + String(err));
@@ -703,16 +1189,28 @@ function renderFailedSyncPage(){
   };
 }
 
+
 function renderMonitoringHead(){
   const thead = document.getElementById('monitoring-thead'); if(!thead) return;
   const { y, m, nDays } = getSelectedMonthRange();
-  // baris header: kolom tetap + kolom tanggal 1..n + Nilai
+  const holSet = buildHolidaySetForMonth(y, m); // <- NEW
+
   const fixedCols = ['No','NIK','Nama','Program','Divisi','Unit','Region','Group'];
   let ths = fixedCols.map(h=>`<th>${h}</th>`).join('');
-  for (let d=1; d<=nDays; d++){ ths += `<th>${d}</th>`; }
+
+  for (let d=1; d<=nDays; d++){
+    const isSun = isSunday(y, m, d);
+    const isHol = holSet.has(d);
+    const cls = [
+      isSun ? 'sun-head' : '',
+      isHol ? 'hol-head' : ''
+    ].filter(Boolean).join(' ');
+    ths += `<th class="${cls}">${d}</th>`;
+  }
   ths += `<th>Nilai</th>`;
   thead.innerHTML = `<tr>${ths}</tr>`;
 }
+
 
 function renderMonitoringTable(){
   renderMonitoringHead(); // bangun thead sesuai bulan
@@ -720,6 +1218,7 @@ function renderMonitoringTable(){
   if (!tbody) return;
 
   const { y, m, nDays } = getSelectedMonthRange();
+  const holSet = buildHolidaySetForMonth(y, m);
   const participants = DB.getParticipants().filter(p => String(p.is_active)!=='false');
 
   // Index laporan bulan-terpilih: map[nk|dd/mm/yyyy] = score
@@ -746,35 +1245,38 @@ function renderMonitoringTable(){
     const tds = [];
 
     for (let day=1; day<=nDays; day++){
-  const sdd = dd(day);      // pakai fungsi util dd() yang sudah ada
-  const smm = dd(m+1);
-  const yyyy = y;
+    const sdd = dd(day);
+    const smm = dd(m+1);
+    const yyyy = y;
 
-  const ddmmyyyy = `${sdd}/${smm}/${yyyy}`;
-  const key = p.nik + '|' + ddmmyyyy;
-  const sc = repMap[key];
+    const ddmmyyyy = `${sdd}/${smm}/${yyyy}`;
+    const key = p.nik + '|' + ddmmyyyy;
+    const sc = repMap[key];
 
-  const sunday = isSunday(y, m, day);
-  const sunClass = sunday && (sc===undefined || sc==='' || Number.isNaN(sc)) ? 'sun-pink' : '';
+    const sunday  = isSunday(y, m, day);
+    const isHol   = holSet.has(day);
 
-  if (typeof sc === 'number' && !Number.isNaN(sc)){
-    total += sc;
-    let txtClass = 'txt-none';
-    if (sc===4) txtClass='txt-green';
-    else if (sc===3) txtClass='txt-yellow';
-    else if (sc===2) txtClass='txt-red';
-    else if (sc===1) txtClass='txt-black';
+    const sunClass = sunday && (sc===undefined || sc==='' || Number.isNaN(sc)) ? 'sun-pink' : '';
+    const holClass = isHol ? 'hol-col' : '';
 
-    tds.push(`
-      <td class="cell-score ${sunClass}">
-        ${dailyScoreBadge(sc)}
-        <span class="score-text ${txtClass}">${sc}</span>
-      </td>
-    `);
-  } else {
-    tds.push(`<td class="cell-score ${sunClass}"></td>`);
-  }
-}
+    if (typeof sc === 'number' && !Number.isNaN(sc)){
+        total += sc;
+        let txtClass = 'txt-none';
+        if (sc===4) txtClass='txt-green';
+        else if (sc===3) txtClass='txt-yellow';
+        else if (sc===2) txtClass='txt-red';
+        else if (sc===1) txtClass='txt-black';
+
+        tds.push(`
+        <td class="cell-score ${holClass} ${sunClass}">
+            ${dailyScoreBadge(sc)}
+            <span class="score-text ${txtClass}">${sc}</span>
+        </td>
+        `);
+    } else {
+        tds.push(`<td class="cell-score ${holClass} ${sunClass}"></td>`);
+    }
+    }
     const capped = Math.max(0, Math.min(100, Math.round(total)));
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -836,9 +1338,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (target) target.classList.add('active');
       if (pageId==='settings-page') renderUsersTable();
       if (pageId==='report-page') renderReportsTable();
-      if (pageId==='dashboard-page') renderStats();
+      if (pageId==='dashboard-page'){ renderStats(); renderDashboard(); }
       if (pageId==='monitoring-page') renderMonitoringTable();
       if (pageId==='failedsync-page') renderFailedSyncPage();
+      
     });
   });
   document.querySelectorAll('.tab').forEach(tab => {
@@ -1037,8 +1540,15 @@ async function syncAll(){
 
   // PULL sesudah push — dan JANGAN merusak status lokal yg sudah Tersinkron
   await Loader.withLoading('Menarik data dari server...', (async ()=>{
-    const p = await apiGet({action:'listParticipants', q:''});
-    if (p.ok) DB.setParticipants(p.data||[]);
+    // [HOL] Tarik master libur nasional (ISO yyyy-mm-dd)
+    try{
+    const h = await apiGet({ action:'listHolidays' });
+    if (h && h.ok && Array.isArray(h.data)) {
+        DB.setHolidays(h.data);
+    }
+    }catch(_){}
+
+    await fetchAllParticipants();
 
     const r = await apiGet({action:'listReports'});
     if (r.ok) {
@@ -1106,6 +1616,212 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+/* ===================== 11a) IMPORT DATA AKTUAL (.xlsx/.xls/.csv) + TEMPLATE ===================== */
+document.addEventListener('DOMContentLoaded', () => {
+  const btnUploadActual = document.getElementById('btn-upload-actual');
+  const inputActual     = document.getElementById('file-actual');
+  const btnTplActual    = document.getElementById('btn-download-actual-template');
+
+  if (btnUploadActual && inputActual) {
+    btnUploadActual.addEventListener('click', () => inputActual.click());
+    inputActual.addEventListener('change', async function(){
+      if (!this.files || !this.files[0]) return;
+      const file   = this.files[0];
+      const unlock = lockButton(btnUploadActual);
+      try{
+        Loader.show('Membaca file data aktual...'); Loader.setProgress(15);
+        const rows = await readActualFile(file); // normalisasi → {nik,report_date,send_date,send_time,score,...}
+        if (!rows.length){ toast('File kosong atau kolom tidak dikenali.'); return; }
+
+        // Upsert lokal satu per satu
+        let done = 0;
+        for (const r of rows){
+          DB.upsertReportLocal(r);
+          done++;
+          if (done % 20 === 0) Loader.setProgress(15 + Math.min(60, Math.round(done/rows.length*60)));
+        }
+        Loader.setProgress(80);
+
+        // Coba kirim ke server (jika backend mendukung). Kalau gagal, tetap aman di lokal.
+        try{
+          const res = await apiPost({ action:'importReports', rows });
+            Loader.setProgress(95);
+
+            if (res && res.ok){
+            // Tandai tersinkron utk baris yang lolos
+            const stamped = rows.map(x => ({ ...x, isSynced:true, synced_at:new Date().toISOString() }));
+            stamped.forEach(x => DB.upsertReportLocal(x));
+
+            // === NEW: proses error baris (jika ada) → masukkan ke Gagal Sync
+            const errs = Array.isArray(res.errors) ? res.errors : [];
+            let addedFailed = 0;
+            if (errs.length){
+                errs.forEach(er => {
+                const idx = typeof er.index === 'number' ? er.index : -1;
+                const src = rows[idx] || {}; // baris asal (bisa tidak ada)
+                const nik = src.nik || er.nik || '';
+                const report_date = fmtWIBddmmyyyy(src.report_date || er.report_date || '');
+                const send_date   = fmtWIBddmmyyyy(src.send_date || '');
+                const send_time   = coerceHHMM(src.send_time || '');
+                const score       = (src.score===0 || src.score==='0' || src.score) ? Number(src.score) : '';
+
+                const _key = nik && report_date ? (nik + '|' + report_date) : (src._key || localId());
+
+                DB.addFailed({
+                    _key, id: src.id || '',
+                    nik, report_date, send_date, send_time, score,
+                    reason: (er.message || er.reason || 'Unknown import error'),
+                });
+                addedFailed++;
+                });
+
+                // simpan ringkasan ke meta untuk ditampilkan sebagai banner di halaman Gagal Sync
+                const meta = DB.getMeta();
+                DB.setMeta({
+                ...meta,
+                lastImportAt: new Date().toISOString(),
+                lastImportErrors: errs.slice(0, 200) // batasi agar ringan
+                });
+            }
+
+            renderFailedSyncPage(); renderReportsTable(); renderStats(); renderMonitoringTable(); renderQueueInfo();
+
+            const msg = `Impor selesai. ${res.inserted||0} baru, ${res.updated||0} update, ${res.skipped||0} dilewati` +
+                        (errs.length ? `, ${errs.length} baris bermasalah → lihat "Gagal Sync".` : '');
+            toast(msg);
+            } else {
+            toast(`Impor selesai lokal. Kirim ke server gagal/skip: ${(res && res.error) || 'unknown'}.`);
+            }
+        } catch(_){
+          toast('Impor selesai lokal. Offline/Backend tidak mendukung import massal.');
+        }
+
+        renderReportsTable(); renderStats(); renderMonitoringTable(); renderQueueInfo();
+      }catch(err){
+        console.error(err);
+        toast('Gagal memproses file: ' + err.message);
+      }finally{
+        Loader.hide(); this.value=''; unlock();
+      }
+    });
+  }
+
+  if (btnTplActual) {
+    btnTplActual.addEventListener('click', ()=> {
+      try { downloadActualTemplateXLSX(); }
+      catch(err){ console.error(err); toast('Gagal membuat template: ' + err.message); }
+    });
+  }
+});
+
+// Baca file aktual → array objek normal (siap upsert)
+async function readActualFile(file){
+  const buf  = await file.arrayBuffer();
+  const name = (file.name||'').toLowerCase();
+  let rowsRaw = [];
+  if (name.endsWith('.csv')) {
+    const text = new TextDecoder('utf-8').decode(buf);
+    rowsRaw = parseCSV(text);
+  } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    if (typeof XLSX === 'undefined') throw new Error('Library XLSX belum termuat');
+
+   // Baca date sebagai Date, dan cari sheet "actual_reports" jika ada
+   const wb  = XLSX.read(buf, { type:'array', cellDates:true });
+   const targetName = wb.SheetNames.includes('actual_reports') ? 'actual_reports' : wb.SheetNames[0];
+   const sh  = wb.Sheets[targetName];
+   // raw:false biar waktu "07:00:00" jadi string, bukan angka kasar; defval:'' biar tidak undefined
+   rowsRaw   = XLSX.utils.sheet_to_json(sh, { defval:'', raw:false });
+  } else {
+    throw new Error('Format tidak didukung. Gunakan .csv atau .xlsx');
+  }
+
+  const norm = rowsRaw.map(r => normalizeActualRow(r))
+                      .filter(x => x && x.nik && x.report_date);
+  return norm;
+}
+
+// Konversi nilai tanggal campuran (Date object / "YYYY-MM-DD" / serial Excel) → "dd/mm/yyyy"
+function toDDMMYYYY_Flex(v){
+  if (v instanceof Date && !isNaN(v)) return toDDMMYYYY(v);
+  const s = String(v||'').trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  const asDate = new Date(s);
+  if (!isNaN(asDate)) return toDDMMYYYY(asDate);
+  const n = Number(s);
+  if (!Number.isNaN(n) && n>0 && n<600000){ // kisaran aman serial Excel
+    // Excel epoch 1899-12-30
+    const base = Date.UTC(1899, 11, 30);
+    const ms = base + Math.round(n*24*60*60*1000);
+    return toDDMMYYYY(new Date(ms));
+  }
+  return fmtWIBddmmyyyy(s);
+}
+
+// Normalisasi 1 baris data aktual → konsisten dgn skema app
+function normalizeActualRow(r){
+  const get = (...keys) => {
+    for (const k of keys){
+      const f = Object.keys(r).find(x => x.toLowerCase().trim() === k.toLowerCase());
+      if (f) return r[f]; // biarkan tipe aslinya (bisa Date/number/string)
+    }
+    return '';
+  };
+
+ const nikRaw      = get('nik','NIK');
+ const nik         = (typeof nikRaw === 'number') ? String(Math.trunc(nikRaw)) : String(nikRaw||'').replace(/\.0$/,'');
+ const reportDate  = toDDMMYYYY_Flex(get('report_date','tanggal laporan','tgl laporan','tgl_laporan','tanggal'));
+ const sendDate    = toDDMMYYYY_Flex(get('send_date','tanggal kirim','tgl kirim','tgl_kirim'));
+ const sendTime    = coerceHHMM( get('send_time','jam kirim','jam_kirim','waktu','time') );
+  let scoreStr      = get('score','nilai');
+
+  let score = (scoreStr!=='' && scoreStr!=null) ? Number(scoreStr) : computeDailyScore(reportDate, sendDate, sendTime).score;
+  const _key = nik + '|' + reportDate;
+
+  return {
+    id: localId(),
+    nik,
+    report_date: reportDate,
+    send_date: sendDate,
+    send_time: sendTime,
+    score: (Number.isFinite(score) ? score : ''),
+    isSynced: false,
+    synced_at: '',
+    _key,
+    imported_at: new Date().toISOString()
+  };
+}
+
+
+// Buat & unduh template .xlsx contoh import data aktual
+function downloadActualTemplateXLSX(){
+  if (typeof XLSX === 'undefined') throw new Error('Library XLSX belum termuat');
+
+  // Sheet README
+  const readmeAOA = [
+    ['Template Import Data Aktual – Laporan Harian'],
+    ['Isi kolom sesuai header pada sheet "actual_reports".'],
+    ['Format tanggal: dd/mm/yyyy, format jam: HH:MM (24 jam).'],
+    ['Kolom "score" opsional. Jika kosong, sistem akan menghitung otomatis:'],
+    ['- 4: Dikirim ≤ H+1 08:00 | 3: ≤ H+1 12:00 | 2: ≤ H+1 23:59 | 1: Lewat dari itu'],
+    ['Header wajib: nik, report_date, send_date, send_time, score(optional)'],
+  ];
+  const shReadme = XLSX.utils.aoa_to_sheet(readmeAOA);
+
+  // Sheet contoh data
+  const today  = new Date();
+  const ddmmmy = toDDMMYYYY(today);
+  const sample = [
+    { nik:'6501012345', report_date:ddmmmy, send_date:ddmmmy, send_time:'07:45', score:'' },
+    { nik:'6501098765', report_date:ddmmmy, send_date:ddmmmy, send_time:'13:10', score:'2' } // contoh isi manual
+  ];
+  const shData = XLSX.utils.json_to_sheet(sample, {header:['nik','report_date','send_date','send_time','score']});
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, shReadme, 'README');
+  XLSX.utils.book_append_sheet(wb, shData,   'actual_reports');
+  XLSX.writeFile(wb, 'template_import_aktual.xlsx');
+}
 
 async function readTableFile(file){
   const buf = await file.arrayBuffer();
@@ -1200,9 +1916,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+/* ===================== 12a) SETTINGS – CLEAR LOCAL STORAGE ===================== */
+document.addEventListener('DOMContentLoaded', () => {
+  const bRep  = document.getElementById('btn-clear-reports');
+  const bPar  = document.getElementById('btn-clear-participants');
+  const bQue  = document.getElementById('btn-clear-queues');
+  const bAll  = document.getElementById('btn-clear-all');
+
+  if (bRep) bRep.addEventListener('click', ()=>{
+    if (confirm('Hapus SEMUA laporan lokal?')) {
+      DB.clearReports(); renderReportsTable(); renderStats(); renderMonitoringTable(); renderQueueInfo();
+      toast('Laporan lokal dihapus.');
+    }
+  });
+  if (bPar) bPar.addEventListener('click', ()=>{
+    if (confirm('Hapus master peserta lokal?')) {
+      DB.clearParticipants(); buildFilterOptionsFromParticipants(); renderStats();
+      toast('Master peserta lokal dihapus.');
+    }
+  });
+  if (bQue) bQue.addEventListener('click', ()=>{
+    if (confirm('Hapus antrean Pending & Gagal sync?')) {
+      DB.clearQueues(); renderFailedSyncPage(); renderQueueInfo();
+      toast('Antrean pending/gagal dihapus.');
+    }
+  });
+  if (bAll) bAll.addEventListener('click', ()=>{
+    if (confirm('HAPUS SEMUA DATA LOKAL (laporan, peserta, pengguna, meta, antrean)?')) {
+      DB.clearAll(); renderReportsTable(); renderFailedSyncPage(); buildFilterOptionsFromParticipants(); renderStats(); renderMonitoringTable(); renderUsersTable(); renderQueueInfo();
+      toast('Semua data lokal dihapus. Lakukan Sinkronisasi untuk menarik ulang dari server.');
+    }
+  });
+});
+
 /* ===================== 13) BOOTSTRAP ===================== */
 document.addEventListener('DOMContentLoaded', async function(){
-  renderReportsTable(); renderStats(); renderUsersTable(); renderMonitoringTable(); buildFilterOptionsFromParticipants(); renderFailedSyncPage();
+  renderReportsTable(); renderStats(); renderUsersTable(); renderMonitoringTable(); buildFilterOptionsFromParticipants(); renderFailedSyncPage(); renderDashboard();
 
 
   // Chart stub (opsional)
