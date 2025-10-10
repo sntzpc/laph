@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Laporan Harian Mentee - Karyamas Plantation</title>
+
+  <!-- Icons & Style -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"/>
+  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Libs -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/id.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>Karyamas Plantation</h2>
+        <p>Seriang Training Center</p>
+      </div>
+      <div class="sidebar-menu">
+        <ul>
+          <li><a href="#" class="active" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+          <li><a href="#" data-page="input"><i class="fas fa-edit"></i> Input Laporan</a></li>
+          <li><a href="#" data-page="report"><i class="fas fa-chart-bar"></i> Report</a></li>
+          <li><a href="#" data-page="sync"><i class="fas fa-sync"></i> Sinkronisasi</a></li>
+          <li><a href="#" data-page="settings"><i class="fas fa-cog"></i> Settings</a></li>
+          <li><a href="#" data-page="failedsync"><i class="fas fa-exclamation-triangle"></i> Gagal Sync</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-left"><h1>Laporan Harian Mentee</h1></div>
+        <div class="header-right">
+          <div class="user-info">
+            <div class="user-avatar">TC</div>
+            <div>
+              <div>Seriang Training Center</div>
+              <div style="font-size:.8rem;color:var(--gray);">Karyamas Plantation</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page active">
+          <div class="stats-container">
+            <div class="stat-card stat-green">
+              <div class="stat-icon"><i class="fas fa-user-check"></i></div>
+              <div class="stat-info"><h3>0</h3><p>Total Peserta</p></div>
+            </div>
+            <div class="stat-card stat-yellow">
+              <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+              <div class="stat-info"><h3>-</h3><p>Rata-rata Nilai</p></div>
+            </div>
+            <div class="stat-card stat-red">
+              <div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div>
+              <div class="stat-info"><h3>0</h3><p>Belum Sync</p></div>
+            </div>
+            <div class="stat-card stat-blue">
+              <div class="stat-icon"><i class="fas fa-sync"></i></div>
+              <div class="stat-info"><h3>0</h3><p>Data Tersinkron</p></div>
+            </div>
+          </div>
+
+          <div class="chart-container">
+            <div class="chart-card">
+              <h3>10 Peserta dengan Nilai Tertinggi</h3>
+              <canvas id="topScoresChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Distribusi Nilai Peserta</h3>
+              <canvas id="scoreDistributionChart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Daftar Peserta Berdasarkan Nilai</h3>
+              <div class="filter-container" style="padding:0;background:none;box-shadow:none;">
+                <div class="filter-item">
+                  <input type="text" class="form-control" placeholder="Cari peserta...">
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>No</th><th>NIK</th><th>Nama</th><th>Unit</th><th>Region</th><th>Nilai</th><th>Kategori</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="pagination">
+                <div class="pagination-info">Menampilkan 0 data</div>
+                <div class="pagination-controls">
+                  <select class="form-control page-size-select" style="width:auto;">
+                    <option>20</option><option>40</option><option>80</option><option>100</option><option>500</option>
+                  </select>
+                  <div class="page-numbers"><button class="active">1</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input Page -->
+        <div id="input-page" class="page">
+          <div class="card">
+            <div class="card-header"><h3>Input Laporan Harian</h3></div>
+            <div class="card-body">
+              <form id="report-form">
+                <div class="row">
+                  <div class="col">
+                    <div class="form-group">
+                      <label for="nik">NIK Peserta</label>
+                      <div class="autosuggest-container">
+                        <input type="text" class="form-control" id="nik" placeholder="Ketik NIK atau nama peserta"/>
+                        <div class="autosuggest-list" id="nik-suggestions" style="display:none;"></div>
+                      </div>
+                      <div id="participant-info" style="margin-top:10px;padding:10px;background:#f8f9fa;border-radius:4px;display:none;">
+                        <div><strong>Nama:</strong> <span id="info-nama">-</span></div>
+                        <div><strong>Program:</strong> <span id="info-program">-</span></div>
+                        <div><strong>Divisi:</strong> <span id="info-divisi">-</span></div>
+                        <div><strong>Unit:</strong> <span id="info-unit">-</span></div>
+                        <div><strong>Region:</strong> <span id="info-region">-</span></div>
+                        <div><strong>Group:</strong> <span id="info-group">-</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col">
+                    <div class="form-group">
+                      <label for="report-date">Tanggal Laporan</label>
+                      <input type="text" class="form-control" id="report-date" placeholder="dd/mm/yyyy"/>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="form-group">
+                      <label for="send-datetime">Tanggal & Jam Kirim Laporan</label>
+                      <input type="text" class="form-control" id="send-datetime" placeholder="dd/mm/yyyy hh:mm"/>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group" style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Simpan Laporan</button>
+                  <button type="button" id="btn-reset-form" class="btn btn-outline"><i class="fas fa-redo"></i> Reset</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report Page -->
+        <div id="report-page" class="page">
+          <div class="tabs">
+            <div class="tab active" data-tab="tabular">Tabular</div>
+            <div class="tab" data-tab="monitoring">Monitoring</div>
+          </div>
+
+          <div class="filter-container" id="report-filters">
+            <div class="filter-item">
+                <label>Kegiatan (Program)</label>
+                <select class="form-control" id="filter-program">
+                <option value="">Semua</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Bulan</label>
+                <input type="text" class="form-control" id="filter-month" placeholder="Pilih bulan"/>
+            </div>
+            <div class="filter-item">
+                <label>Group</label>
+                <select class="form-control" id="filter-group">
+                <option value="">Semua</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Region</label>
+                <select class="form-control" id="filter-region">
+                <option value="">Semua</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Unit</label>
+                <select class="form-control" id="filter-unit">
+                <option value="">Semua</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label>Divisi</label>
+                <select class="form-control" id="filter-divisi">
+                <option value="">Semua</option>
+                </select>
+            </div>
+            </div>
+
+          <div id="tabular-content" class="tab-content active">
+            <div class="card">
+              <div class="card-header">
+                <h3>Laporan Tabular</h3>
+                <div><button class="btn btn-primary btn-sm" id="btn-sync-tabular"><i class="fas fa-sync"></i> Sinkronisasi</button>
+                <small style="margin-left:8px;color:#666;">Antre: <b id="pending-count-tabular">0</b></small>
+            </div>
+              </div>
+              <div class="card-body">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead> 
+                      <tr>
+                        <th>No</th><th>NIK</th><th>Nama</th>
+                        <th>Tanggal Laporan</th><th>Tanggal Kirim</th><th>Jam Kirim</th>
+                        <th>Nilai</th><th>Status Sync</th><th>Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <div class="pagination">
+                  <div class="pagination-info">Menampilkan 0 data</div>
+                  <div class="pagination-controls">
+                    <select class="form-control page-size-select" style="width:auto;">
+                      <option>20</option><option>40</option><option>80</option><option>100</option><option>500</option>
+                    </select>
+                    <div class="page-numbers"><button class="active">1</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="monitoring-content" class="tab-content">
+            <div class="card">
+              <div class="card-header"><h3>Laporan Monitoring (Matrik)</h3></div>
+              <div class="card-body">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead id="monitoring-thead"></thead>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <div class="pagination">
+                  <div class="pagination-info">Menampilkan 0 data</div>
+                  <div class="pagination-controls">
+                    <select class="form-control page-size-select" style="width:auto;">
+                      <option>20</option><option>40</option><option>80</option><option>100</option><option>500</option>
+                    </select>
+                    <div class="page-numbers"><button class="active">1</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sync Page -->
+        <div id="sync-page" class="page">
+          <div class="card">
+            <div class="card-header"><h3>Sinkronisasi Data</h3></div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col">
+                  <div class="card" style="text-align:center;padding:30px;">
+                    <i class="fas fa-upload" style="font-size:3rem;color:var(--primary);margin-bottom:15px;"></i>
+                    <h3>Upload Master Data</h3>
+                    <p style="margin-bottom:20px;">Upload file Excel berisi data master peserta</p>
+                    <button class="btn btn-primary" id="btn-upload-master"><i class="fas fa-file-upload"></i> Upload File</button>
+                    <input type="file" id="file-master" accept=".csv,.xlsx,.xls" style="display:none;"/>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="card" style="text-align:center;padding:30px;">
+                    <i class="fas fa-download" style="font-size:3rem;color:var(--primary);margin-bottom:15px;"></i>
+                    <h3>Tarik Data dari Server</h3>
+                    <p style="margin-bottom:20px;">Tarik data master dan aktual dari Google Sheets</p>
+                    <button class="btn btn-primary" id="btn-sync-pull"><i class="fas fa-cloud-download-alt"></i> Tarik Data</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settings-page" class="page">
+          <div class="card">
+            <div class="card-header"><h3>Pengaturan Sistem</h3></div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col">
+                  <div class="card">
+                    <div class="card-header"><h4>Manajemen Pengguna</h4></div>
+                    <div class="card-body">
+                      <div class="table-container">
+                        <table class="data-table">
+                          <thead>
+                            <tr><th>Username</th><th>Nama</th><th>Role</th><th>Status</th><th>Aksi</th></tr>
+                          </thead>
+                          <tbody id="users-tbody"></tbody>
+                        </table>
+                      </div>
+                      <div style="margin-top:20px;">
+                        <button class="btn btn-primary" id="btn-add-user"><i class="fas fa-plus"></i> Tambah Pengguna</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>              
+            </div>
+          </div>
+        </div>
+
+        <!-- Failed Sync Page -->
+        <div id="failedsync-page" class="page">
+        <div class="card">
+            <div class="card-header"><h3>Data Gagal Sinkron</h3></div>
+            <div class="card-body">
+            <div class="table-container">
+                <table class="data-table">
+                <thead>
+                    <tr>
+                    <th>No</th><th>NIK</th><th>Tgl Laporan</th><th>Tgl Kirim</th><th>Jam Kirim</th><th>Nilai</th><th>Reason</th><th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="failed-sync-tbody"></tbody>
+                </table>
+            </div>
+            <p style="margin-top:10px;color:#666;">Klik <i class="fas fa-redo"></i> untuk sync ulang, <i class="fas fa-times"></i> untuk hapus dari daftar.</p>
+            </div>
+        </div>
+        </div>
+
+      </div> <!-- /content -->
+    </div> <!-- /main-content -->
+  </div> <!-- /container -->
+
+  <!-- Modal Tambah User -->
+  <div id="user-modal" class="modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:2000;">
+    <div class="modal-card" style="max-width:520px;margin:5% auto;background:#fff;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2);overflow:hidden;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--gray-light);">
+        <h3 style="margin:0;color:var(--primary);font-size:1.1rem;">Tambah Pengguna</h3>
+        <button id="user-modal-close" class="btn btn-outline btn-sm">Tutup</button>
+      </div>
+      <div class="card-body" style="padding:16px;">
+        <form id="user-form">
+          <div class="form-group"><label>Username</label><input class="form-control" id="u-username" required/></div>
+          <div class="form-group"><label>Nama</label><input class="form-control" id="u-nama" required/></div>
+          <div class="form-group">
+            <label>Role</label>
+            <select class="form-control" id="u-role"><option>Admin</option><option>User</option></select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select class="form-control" id="u-status"><option>Aktif</option><option>Nonaktif</option></select>
+          </div>
+          <div class="form-group" style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" id="user-modal-cancel" class="btn btn-outline">Batal</button>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <script src="app.js"></script>
+</body>
+</html>
