@@ -130,6 +130,43 @@ function fmtWIBddmmyyyy(input){
 
 /* ===================== [HOL] HOLIDAYS UTIL & STYLE ===================== */
 
+// === NORMALISASI DATA LIBUR → selalu simpan array ISO 'YYYY-MM-DD' (unik) ===
+function toISOyyyy_mm_dd_any(v){
+  if (!v) return '';
+  // already ISO
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // dd/mm/yyyy → iso
+  const m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+  if (m) {
+    const d = +m[1], mo = +m[2]-1, y = +m[3];
+    const dt = new Date(y, mo, d);
+    if (!isNaN(dt)) return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  // coba parse bebas
+  const dt = new Date(s);
+  if (!isNaN(dt)) {
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  return '';
+}
+
+function normalizeHolidayArray(input){
+  const out = new Set();
+  (input||[]).forEach(row=>{
+    // dukung: '2025-01-01' atau {tanggal:'2025-01-01', ...} atau {date:'...'}
+    if (typeof row === 'string') {
+      const iso = toISOyyyy_mm_dd_any(row);
+      if (iso) out.add(iso);
+    } else if (row && typeof row === 'object') {
+      const iso = toISOyyyy_mm_dd_any(row.tanggal || row.date || row.tgl || row.holiday || row[0]);
+      if (iso) out.add(iso);
+    }
+  });
+  return Array.from(out);
+}
+
+
 // Inject gaya minimal jika class belum ada (buat warna libur & sunday header)
 (function injectHolidayStyles(){
   const id = 'holiday-styles';
@@ -158,13 +195,13 @@ function isoOf(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).p
 function buildHolidaySetForMonth(y, m){
   const list = DB.getHolidays(); // array ISO 'YYYY-MM-DD'
   const set = new Set();
-  list.forEach(iso=>{
-    const dt = new Date(iso+'T00:00:00');
+  (list||[]).forEach(iso=>{
+    const dt = new Date(String(iso).trim() + 'T00:00:00');
     if (!isNaN(dt) && dt.getFullYear()===y && dt.getMonth()===m){
-      set.add(dt.getDate()); // simpan nomor tanggal
+      set.add(dt.getDate());
     }
   });
-  return set; // Set<number>
+  return set;
 }
 
 /* ===================== 3a) UTIL WAKTU & SORT ===================== */
@@ -1341,6 +1378,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pageId==='dashboard-page'){ renderStats(); renderDashboard(); }
       if (pageId==='monitoring-page') renderMonitoringTable();
       if (pageId==='failedsync-page') renderFailedSyncPage();
+      attachExportButtons();
       
     });
   });
@@ -1353,6 +1391,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const target = document.getElementById(tabId + '-content');
       if (target) target.classList.add('active');
       if (tabId==='monitoring') renderMonitoringTable();
+      attachExportButtons();
     });
   });
   // Bersihkan dummy angka/tabel awal
@@ -1542,11 +1581,11 @@ async function syncAll(){
   await Loader.withLoading('Menarik data dari server...', (async ()=>{
     // [HOL] Tarik master libur nasional (ISO yyyy-mm-dd)
     try{
-    const h = await apiGet({ action:'listHolidays' });
-    if (h && h.ok && Array.isArray(h.data)) {
-        DB.setHolidays(h.data);
-    }
-    }catch(_){}
+        const h = await apiGet({ action:'listHolidays' });
+        if (h && h.ok && Array.isArray(h.data)) {
+            DB.setHolidays( normalizeHolidayArray(h.data) ); // <<— penting
+        }
+        }catch(_){}
 
     await fetchAllParticipants();
 
@@ -1949,6 +1988,73 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ========== EXPORT EXCEL UTIL ==========
+function tableToAOA(tableEl){
+  const rows = [];
+  const trsHead = tableEl.querySelectorAll('thead tr');
+  const trsBody = tableEl.querySelectorAll('tbody tr');
+
+  trsHead.forEach(tr=>{
+    const row = Array.from(tr.cells).map(td=> td.innerText.trim());
+    rows.push(row);
+  });
+  trsBody.forEach(tr=>{
+    const row = Array.from(tr.cells).map(td=> td.innerText.trim());
+    rows.push(row);
+  });
+  return rows;
+}
+
+function exportAOAtoXLSX(aoa, fileName='export.xlsx', sheetName='Sheet1'){
+  if (typeof XLSX === 'undefined') { alert('Library XLSX belum termuat.'); return; }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, fileName);
+}
+
+function exportTableSelectorToXLSX(selector, fileName, sheetName){
+  const tbl = document.querySelector(selector);
+  if (!tbl){ alert('Tabel tidak ditemukan.'); return; }
+  const aoa = tableToAOA(tbl);
+  exportAOAtoXLSX(aoa, fileName, sheetName);
+}
+
+// Tambahan khusus Monitoring: ekspor dari data yang sedang difilter (lebih cepat & rapi)
+function exportMonitoringCurrentView(){
+  const host = document.querySelector('#monitoring-content table.data-table');
+  if (host){
+    const labelBulan = (FILTER.month || new Date())
+      .toLocaleDateString('id-ID',{ month:'long', year:'numeric' })
+      .replace(/\s+/g,'_');
+    exportTableSelectorToXLSX(
+      '#monitoring-content table.data-table',
+      `monitoring_${labelBulan}.xlsx`,
+      'Monitoring'
+    );
+  } else {
+    alert('Tabel Monitoring tidak ditemukan.');
+  }
+}
+
+function ensureExportBtn({ hostSelector, btnId, tableSelector, label='Export Excel', fileName='export.xlsx', sheetName='Sheet1'}){
+  const host = document.querySelector(hostSelector);
+  if (!host || document.getElementById(btnId)) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;';
+  const btn = document.createElement('button');
+  btn.id = btnId;
+  btn.className = 'btn btn-outline';
+  btn.innerHTML = `<i class="fas fa-file-excel"></i> ${label}`;
+  btn.onclick = () => exportTableSelectorToXLSX(tableSelector, fileName, sheetName);
+  wrap.appendChild(btn);
+
+  // sisipkan di paling atas container
+  host.prepend(wrap);
+}
+
+
 /* ===================== 13) BOOTSTRAP ===================== */
 document.addEventListener('DOMContentLoaded', async function(){
   renderReportsTable(); renderStats(); renderUsersTable(); renderMonitoringTable(); buildFilterOptionsFromParticipants(); renderFailedSyncPage(); renderDashboard();
@@ -1972,6 +2078,72 @@ document.addEventListener('DOMContentLoaded', async function(){
   const needWarmup = DB.getParticipants().length===0 || DB.getReports().length===0 || DB.getUsers().length===0;
   if (needWarmup) { try{ await syncAll(); }catch(_){ /* offline ok */ } }
 });
+
+// === Tambah tombol Export di berbagai halaman/section ===
+function attachExportButtons(){
+  // Dashboard: leaderboard (tabel utama)
+  ensureExportBtn({
+    hostSelector:'#dashboard-page .card-body',
+    btnId:'btn-export-dashboard',
+    tableSelector:'#dashboard-page .data-table',
+    label:'Export Excel',
+    fileName:'dashboard_leaderboard.xlsx',
+    sheetName:'Leaderboard'
+  });
+
+  // Tabular (Laporan)
+  ensureExportBtn({
+    hostSelector:'#report-page .card-body',
+    btnId:'btn-export-tabular',
+    tableSelector:'#tabular-content table.data-table',
+    label:'Export Excel',
+    fileName:'laporan_tabular.xlsx',
+    sheetName:'Laporan'
+  });
+
+  // Monitoring (pakai tombol khusus di samping Cetak PDF)
+  (function ensureMonitoringExportButton(){
+    const host =
+      document.querySelector('#monitoring-content .toolbar') ||
+      document.querySelector('#monitoring-content') ||
+      document.getElementById('monitoring-page');
+    if (!host || document.getElementById('btn-export-monitoring')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'btn-export-monitoring';
+    btn.className = 'btn btn-outline';
+    btn.style.marginLeft = '8px';
+    btn.innerHTML = '<i class="fas fa-file-excel"></i> Export Excel';
+    btn.addEventListener('click', exportMonitoringCurrentView);
+
+    // upayakan berdampingan dengan tombol Cetak PDF jika ada
+    const bar = document.getElementById('btn-print-monitoring')?.parentElement || host;
+    bar.appendChild(btn);
+  })();
+
+  // Users (Settings)
+  ensureExportBtn({
+    hostSelector:'#settings-page',
+    btnId:'btn-export-users',
+    tableSelector:'#settings-page table.data-table',
+    label:'Export Excel',
+    fileName:'users.xlsx',
+    sheetName:'Users'
+  });
+
+  // Gagal Sync
+  ensureExportBtn({
+    hostSelector:'#failedsync-page .card-body',
+    btnId:'btn-export-failed',
+    tableSelector:'#failedsync-page table.data-table',
+    label:'Export Excel',
+    fileName:'gagal_sync.xlsx',
+    sheetName:'Failed'
+  });
+}
+
+// panggil saat halaman/tab berubah
+document.addEventListener('DOMContentLoaded', attachExportButtons);
 
 /* ===================== MONITORING → CETAK PDF (A4 Landscape) ===================== */
 // Pastikan fungsi/variabel berikut sudah ada: FILTER, DB, dd(), fmtWIBddmmyyyy(), applyReportFilters(), getSelectedMonthRange()
