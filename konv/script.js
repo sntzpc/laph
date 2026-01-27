@@ -11,12 +11,28 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
 
     console.log('Aplikasi Laporan Harian dimuat');
-    console.log('URL GAS:', GAS_URL);
+    console.log('GAS_URL_EXEC:', GAS_URL_EXEC);
+    console.log('GAS_URL_GUC:', GAS_URL_GUC);
+    console.log('LastGoodBase:', localStorage.getItem(LS_KEY_LAST_GOOD_BASE));
 });
 
-// URL Google Apps Script Web App (/exec)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyt08ZffVLaFUgZLA4hveiIKOufJ1FeZbTWuGijWypdjhciOx5sMl9duHWh9-b0XhEV/exec';
+// =========================================================
+// 1) URL WEB APP GAS (tetap hardcode)
+// =========================================================
+const GAS_URL_EXEC = 'https://script.google.com/macros/s/AKfycbyt08ZffVLaFUgZLA4hveiIKOufJ1FeZbTWuGijWypdjhciOx5sMl9duHWh9-b0XhEV/exec';
 
+/*
+  2) URL GOOGLEUSERCONTENT (REKOMENDASI UNTUK CHROME MOBILE)
+  Cara ambil (sekali saja):
+  - Buka: GAS_URL_EXEC + '?action=ping' di Chrome (mobile/desktop)
+  - Setelah terbuka, lihat address bar -> biasanya berubah jadi domain:
+    https://script.googleusercontent.com/macros/echo?user_content_key=...
+  - Copy BASE-nya (tanpa parameter) dan tempel ke GAS_URL_GUC di bawah.
+*/
+const GAS_URL_GUC = (localStorage.getItem('konv_guc_base_v1') || '').trim() || 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLitJDlE_f2HCyZQrxYnZCv0sRDccUKtfN620fZPb3GYTr1iU1TVlqeDL9qgR_hsK6-o_n64dda5Dbwkg4YhBFdhhdpduumjS0t7MG6SzDf1vNTD8T9uPalSOhp-3GvPqYxTmcBIKEeW8C_3oPou3JBxV1V5fbpnKcAHbR2TNdqecXAwJMGtzsFSeI0vpJ_qcqzcISJ-PbOHWNgC43HhqryEFtFO77WhudYGXJXUHbacssIyKgCx3dGIjjg5UyNUPNWx1jYqivsP8Kxh0KNb2dGn8RKntg&lib=MXxZ3QukToOE-VaWw-Je--uKhRZZwLdRi';
+
+// cache base yang terakhir sukses (opsional)
+const LS_KEY_LAST_GOOD_BASE = 'konv_last_good_base_v1';
 // Setup semua event listeners
 function setupEventListeners() {
     document.getElementById('fetchDataBtn').addEventListener('click', fetchData);
@@ -54,47 +70,110 @@ function enableButtons() {
 }
 
 /** ==========================================================
- * JSONP helper (CORS-safe for localhost/GitHub Pages)
- * Backend wajib support param: callback=fn
+ * JSONP helper (mobile-safe) + fallback base URL
+ * - Cocok untuk localhost / GitHub Pages / Chrome Mobile
+ * - Backend wajib support param: callback=fn
  * ========================================================== */
-function jsonpGet(url, { timeoutMs = 20000 } = {}) {
-    return new Promise((resolve, reject) => {
-        const cbName = `__cb_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const script = document.createElement('script');
+function buildJsonpUrl(baseUrl, params, cbName){
+  const q = new URLSearchParams({
+    ...params,
+    callback: cbName,
+    _t: Date.now().toString()
+  });
+  return baseUrl + (baseUrl.includes('?') ? '&' : '?') + q.toString();
+}
 
-        let done = false;
-        const cleanup = () => {
-            if (script && script.parentNode) script.parentNode.removeChild(script);
-            try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-        };
+function jsonpCallOnce(baseUrl, params, timeoutMs = 30000){
+  return new Promise((resolve, reject) => {
+    const cb = '__konv_jsonp_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+    let script = null;
+    let done = false;
 
-        const timer = setTimeout(() => {
-            if (done) return;
-            done = true;
-            cleanup();
-            reject(new Error('JSONP timeout'));
-        }, timeoutMs);
+    const cleanUp = () => {
+      try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+      if(script && script.parentNode) script.parentNode.removeChild(script);
+    };
 
-        window[cbName] = (data) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            cleanup();
-            resolve(data);
-        };
+    const timer = setTimeout(() => {
+      if(done) return;
+      done = true;
+      cleanUp();
+      reject(new Error('Timeout: Tidak ada respon dari server (JSONP).'));
+    }, timeoutMs);
 
-        script.onerror = () => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            cleanup();
-            reject(new Error('JSONP load error'));
-        };
+    window[cb] = (data) => {
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      cleanUp();
+      resolve(data);
+    };
 
-        const sep = url.includes('?') ? '&' : '?';
-        script.src = `${url}${sep}callback=${encodeURIComponent(cbName)}`;
-        document.head.appendChild(script);
-    });
+    const url = buildJsonpUrl(baseUrl, params, cb);
+
+    script = document.createElement('script');
+    script.async = true;
+    script.defer = true;
+    script.src = url;
+
+    // tambahan kompatibilitas Chrome mobile
+    script.crossOrigin = 'anonymous';
+    script.referrerPolicy = 'no-referrer-when-downgrade';
+
+    script.onerror = () => {
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      cleanUp();
+      reject(new Error('Gagal memuat JSONP. URL tidak publik / diblokir / salah base URL.'));
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
+/*
+  Kandidat base URL:
+  1) last good base (kalau pernah sukses)
+  2) GAS_URL_GUC (hardcode/tersimpan)
+  3) GAS_URL_EXEC (fallback)
+*/
+function getBaseCandidates(){
+  const list = [];
+
+  const lastGood = (localStorage.getItem(LS_KEY_LAST_GOOD_BASE) || '').trim();
+  if(lastGood) list.push(lastGood);
+
+  const guc = String(GAS_URL_GUC || '').trim();
+  if(guc && !/^PASTE_URL_GOOGLEUSERCONTENT/.test(guc)) list.push(guc);
+
+  list.push(GAS_URL_EXEC);
+
+  // unique
+  return Array.from(new Set(list));
+}
+
+async function jsonpCall(params, timeoutMs = 30000){
+  const candidates = getBaseCandidates();
+  let lastErr = null;
+
+  for(const baseUrl of candidates){
+    try{
+      const res = await jsonpCallOnce(baseUrl, params, timeoutMs);
+
+      // simpan base yang berhasil
+      localStorage.setItem(LS_KEY_LAST_GOOD_BASE, baseUrl);
+      return res;
+    }catch(err){
+      lastErr = err;
+    }
+  }
+
+  const hint =
+    'Pastikan Web App GAS: Execute as Me, Who has access: Anyone. ' +
+    'Dan isi GAS_URL_GUC dari hasil redirect Chrome ke domain script.googleusercontent.com.';
+
+  throw new Error(((lastErr && lastErr.message) ? lastErr.message : 'Gagal memuat data') + ' | ' + hint);
 }
 
 // Fungsi untuk mengambil data
@@ -118,12 +197,10 @@ async function fetchData() {
         console.log('Mengambil data:', { startDate, endDate });
 
         // PUSINGAN (JSONP)
-        const pusinganUrl = `${GAS_URL}?action=getPusingan&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
-        const pusinganData = await jsonpGet(pusinganUrl);
+        const pusinganData = await jsonpCall({ action: 'getPusingan', startDate, endDate });
 
         // RKH (JSONP)
-        const rkhUrl = `${GAS_URL}?action=getRKH&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
-        const rkhData = await jsonpGet(rkhUrl);
+        const rkhData = await jsonpCall({ action: 'getRKH', startDate, endDate });
 
         // Render pusingan
         if (pusinganData && pusinganData.success) {
