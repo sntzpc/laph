@@ -74,7 +74,7 @@ async function fetchAllParticipants(){
   try{
     const res = await apiGet({ action:'listParticipants', q:'', limit: 10000 });
     if (res && res.ok && Array.isArray(res.data) && res.data.length >= 26) {
-      DB.setParticipants(res.data);
+      await DB.setParticipants(res.data);
       return;
     }
   } catch(_) { /* lanjut ke strategi 2 */ }
@@ -95,7 +95,7 @@ async function fetchAllParticipants(){
       }
     } catch(_){}
   }
-  DB.setParticipants(Object.values(merged));
+  await DB.setParticipants(Object.values(merged));
 }
 
 /* ===================== 3) UTIL TANGGAL ===================== */
@@ -670,71 +670,293 @@ async function deleteReportFlow({ key, id }) {
 }
 
 
-/* ===================== 4) DB (localStorage) ===================== */
+/* ===================== 4) DB (IndexedDB + In-Memory Cache) ===================== */
 const DB = (() => {
+  // --- fallback kalau IndexedDB/Dexie tidak tersedia ---
+  const hasIDB = typeof indexedDB !== 'undefined' && typeof Dexie !== 'undefined';
+
+  // kunci lama (untuk migrasi & fallback)
   const KEYS = { P:'kmp.participants', R:'kmp.reports', RP:'kmp.reports_pending', RF:'kmp.reports_failed', U:'kmp.users', M:'kmp.meta', H:'kmp.holidays' };
-  const read  = (k,def)=>{ try{ return JSON.parse(localStorage.getItem(k)||JSON.stringify(def)); }catch(_){ return def; } };
-  const write = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
-  const getHolidays = () => read(KEYS.H, []); 
-  const setHolidays = (rows) => write(KEYS.H, Array.isArray(rows)? rows: []);
+  const lsRead  = (k,def)=>{ try{ return JSON.parse(localStorage.getItem(k)||JSON.stringify(def)); }catch(_){ return def; } };
+  const lsWrite = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
 
-  const getParticipants = () => read(KEYS.P, []);
-  const setParticipants = (rows) => write(KEYS.P, Array.isArray(rows)? rows: []);
-  const getReports = () => read(KEYS.R, []);
-  const setReports = (rows) => write(KEYS.R, Array.isArray(rows)? rows: []);
-  function upsertReportLocal(obj){
-    const rows = getReports();
-    const key = obj._key || (obj.nik + '|' + obj.report_date);
-    const i = rows.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === key);
-    if (i>-1) rows[i] = {...rows[i], ...obj}; else rows.push({...obj});
-    setReports(rows);
+  // --- in-memory cache agar API getter tetap sinkron ---
+  const cache = {
+    participants: [],
+    reports: [],
+    reports_pending: [],
+    reports_failed: [],
+    users: [],
+    meta: { lastSyncAt:null, version:1 },
+    holidays: []
+  };
+
+  // ---------- Fallback PENUH: gunakan localStorage persis seperti dulu ----------
+  if (!hasIDB) {
+    console.warn('[DB] IndexedDB/Dexie tidak tersedia. Fallback ke localStorage.');
+    // inisialisasi cache dari LS agar konsisten
+    cache.participants   = lsRead(KEYS.P, []);
+    cache.reports        = lsRead(KEYS.R, []);
+    cache.reports_pending= lsRead(KEYS.RP, []);
+    cache.reports_failed = lsRead(KEYS.RF, []);
+    cache.users          = lsRead(KEYS.U, []);
+    cache.meta           = lsRead(KEYS.M, { lastSyncAt:null, version:1 });
+    cache.holidays       = lsRead(KEYS.H, []);
+
+    // adapter kompatibel (API sama)
+    function syncLS(){
+      lsWrite(KEYS.P, cache.participants);
+      lsWrite(KEYS.R, cache.reports);
+      lsWrite(KEYS.RP, cache.reports_pending);
+      lsWrite(KEYS.RF, cache.reports_failed);
+      lsWrite(KEYS.U, cache.users);
+      lsWrite(KEYS.M, cache.meta);
+      lsWrite(KEYS.H, cache.holidays);
+    }
+
+    // expose
+    const api = {
+      // lifecycle
+      async ready(){}, // no-op
+      async migrateFromLocalIfNeeded(){}, // no-op pada fallback
+
+      // collections (getters sinkron, setters update cache + LS)
+      getParticipants(){ return cache.participants; },
+      setParticipants(rows){ cache.participants = Array.isArray(rows)? rows: []; syncLS(); },
+
+      getReports(){ return cache.reports; },
+      setReports(rows){ cache.reports = Array.isArray(rows)? rows: []; syncLS(); },
+      upsertReportLocal(obj){
+        const key = obj._key || (obj.nik + '|' + obj.report_date);
+        const i = cache.reports.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === key);
+        if (i>-1) cache.reports[i] = {...cache.reports[i], ...obj}; else cache.reports.push({...obj});
+        syncLS();
+      },
+
+      getPending(){ return cache.reports_pending; },
+      setPending(rows){ cache.reports_pending = Array.isArray(rows)? rows: []; syncLS(); },
+      addPending(obj){ cache.reports_pending.push(obj); syncLS(); },
+      removePendingByKey(k){ cache.reports_pending = cache.reports_pending.filter(r => r._key !== k); syncLS(); },
+
+      getFailed(){ return cache.reports_failed; },
+      setFailed(rows){ cache.reports_failed = Array.isArray(rows)? rows: []; syncLS(); },
+      addFailed(obj){ cache.reports_failed.push(obj); syncLS(); },
+      removeFailedByKey(k){ cache.reports_failed = cache.reports_failed.filter(r => r._key !== k); syncLS(); },
+
+      getUsers(){ return cache.users; },
+      setUsers(rows){ cache.users = Array.isArray(rows)? rows: []; syncLS(); },
+
+      getMeta(){ return cache.meta; },
+      setMeta(meta){ cache.meta = { ...cache.meta, ...(meta||{}) }; syncLS(); },
+
+      getHolidays(){ return cache.holidays; },
+      setHolidays(arr){ cache.holidays = Array.isArray(arr)? arr: []; syncLS(); },
+
+      getReportByKey(k){ return cache.reports.find(r => (r._key || (r.nik+'|'+r.report_date)) === k); },
+      deleteReportByKey(k){ cache.reports = cache.reports.filter(r => (r._key || (r.nik+'|'+r.report_date)) !== k); syncLS(); },
+      updateReportByKey(k, patch){
+        const i = cache.reports.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === k);
+        if (i>-1){ cache.reports[i] = { ...cache.reports[i], ...(patch||{}) }; syncLS(); }
+      },
+
+      // clear helpers
+      clearReports(){ cache.reports=[]; syncLS(); },
+      clearParticipants(){ cache.participants=[]; syncLS(); },
+      clearQueues(){ cache.reports_pending=[]; cache.reports_failed=[]; syncLS(); },
+      clearUsers(){ cache.users=[]; syncLS(); },
+      clearMeta(){ cache.meta={ lastSyncAt:null, version:1 }; syncLS(); },
+      clearAll(){ cache.participants=[]; cache.reports=[]; cache.reports_pending=[]; cache.reports_failed=[]; cache.users=[]; cache.meta={ lastSyncAt:null, version:1 }; cache.holidays=[]; syncLS(); }
+    };
+    return api;
   }
-  const getPending = () => read(KEYS.RP, []);
-  const setPending = (rows) => write(KEYS.RP, Array.isArray(rows)? rows: []);
-  const addPending = (obj) => setPending([...getPending(), obj]);
-  const removePendingByKey = (_key) => setPending(getPending().filter(r => r._key !== _key));
 
-  // ⬇️ NEW: antrean gagal
-  const getFailed  = () => read(KEYS.RF, []);
-  const setFailed  = (rows) => write(KEYS.RF, Array.isArray(rows)? rows: []);
-  const addFailed  = (obj) => setFailed([...getFailed(), obj]);
-  const removeFailedByKey = (_key) => setFailed(getFailed().filter(r => r._key !== _key));
+  // ---------- Mode IndexedDB (dengan Dexie) ----------
+  const db = new Dexie('kmp-db');
+  db.version(1).stores({
+    participants: 'nik, program, unit, region, divisi, group',
+    reports:      '_key, nik, report_date, send_date, send_time, score, isSynced, synced_at',
+    reports_pending: '_key',
+    reports_failed:  '_key',
+    users:        'username',
+    meta:         'key',
+    holidays:     'iso'
+  });
 
-  const getUsers = () => read(KEYS.U, []);
-  const setUsers = (rows) => write(KEYS.U, Array.isArray(rows)? rows: []);
-  const getMeta = () => read(KEYS.M, { lastSyncAt:null, version:1 });
-  const setMeta = (meta) => write(KEYS.M, {...getMeta(), ...meta});
+  let _isReady = false;
 
-    function getReportByKey(_key){
-    return getReports().find(r => (r._key || (r.nik+'|'+r.report_date)) === _key);
-    }
-    function deleteReportByKey(_key){
-    const rows = getReports().filter(r => (r._key || (r.nik+'|'+r.report_date)) !== _key);
-    setReports(rows);
-    }
-    function updateReportByKey(_key, patch){
-    const rows = getReports();
-    const i = rows.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === _key);
-    if (i > -1) {
-        rows[i] = { ...rows[i], ...patch };
-        setReports(rows);
-    }
-    }
+  async function loadAllIntoCache(){
+    const [P,R,RP,RF,U,M,H] = await Promise.all([
+      db.participants.toArray(),
+      db.reports.toArray(),
+      db.reports_pending.toArray(),
+      db.reports_failed.toArray(),
+      db.users.toArray(),
+      db.meta.get('app_meta'),
+      db.holidays.toArray()
+    ]);
+    cache.participants   = P || [];
+    cache.reports        = R || [];
+    cache.reports_pending= RP|| [];
+    cache.reports_failed = RF|| [];
+    cache.users          = U || [];
+    cache.meta           = M || { key:'app_meta', lastSyncAt:null, version:1, migrated:false };
+    cache.holidays       = (H||[]).map(x=>x.iso);
+  }
 
+  async function persistMeta(patch){
+    const merged = { ...(cache.meta||{}), ...(patch||{}), key:'app_meta' };
+    cache.meta = merged;
+    await db.meta.put(merged);
+  }
 
-  return { // Tambahan helper penghapusan data lokal
-    clearReports(){ localStorage.removeItem('kmp.reports'); },
-    clearParticipants(){ localStorage.removeItem('kmp.participants'); },
-    clearQueues(){ localStorage.removeItem('kmp.reports_pending'); localStorage.removeItem('kmp.reports_failed'); },
-    clearUsers(){ localStorage.removeItem('kmp.users'); },
-    clearMeta(){ localStorage.removeItem('kmp.meta'); },
-    clearAll(){
-    this.clearReports(); this.clearParticipants(); this.clearQueues(); this.clearUsers(); this.clearMeta();
+  const api = {
+    async ready(){
+      if (_isReady) return;
+      await loadAllIntoCache();
+      _isReady = true;
     },
-    getParticipants, setParticipants, getReportByKey, deleteReportByKey, updateReportByKey, getReports, setReports, upsertReportLocal, 
-    getPending, setPending, addPending, removePendingByKey,  getFailed, setFailed, addFailed, removeFailedByKey, getUsers, setUsers, 
-    getMeta, setMeta, getHolidays, setHolidays };
+
+    // sekali waktu: copy dari localStorage -> IndexedDB
+    async migrateFromLocalIfNeeded(){
+      await api.ready();
+      if (cache.meta && cache.meta.migrated) return; // sudah migrasi
+
+      // baca semua sumber lama
+      const P  = lsRead(KEYS.P, []);
+      const R  = lsRead(KEYS.R, []);
+      const RP = lsRead(KEYS.RP, []);
+      const RF = lsRead(KEYS.RF, []);
+      const U  = lsRead(KEYS.U, []);
+      const M  = lsRead(KEYS.M, { lastSyncAt:null, version:1 });
+      const H  = lsRead(KEYS.H, []);
+
+      // tulis ke IDB (replace)
+      await db.transaction('rw', db.tables, async ()=>{
+        await db.participants.clear();     if (P.length)  await db.participants.bulkPut(P);
+        await db.reports.clear();          if (R.length)  await db.reports.bulkPut(R.map(x=>({ ...x, _key: x._key || (x.nik+'|'+x.report_date) })));
+        await db.reports_pending.clear();  if (RP.length) await db.reports_pending.bulkPut(RP.map(x=>({ ...x, _key: x._key || (x.nik+'|'+x.report_date) })));
+        await db.reports_failed.clear();   if (RF.length) await db.reports_failed.bulkPut(RF.map(x=>({ ...x, _key: x._key || (x.nik+'|'+x.report_date) })));
+        await db.users.clear();            if (U.length)  await db.users.bulkPut(U);
+        await db.holidays.clear();         if (H.length)  await db.holidays.bulkPut((H||[]).map(iso=>({ iso })));
+        await db.meta.put({ key:'app_meta', ...M, migrated:true, migratedAt:new Date().toISOString() });
+      });
+
+      await loadAllIntoCache();
+      // opsional: bersihkan LS lama (aman)
+      try{
+        [KEYS.P,KEYS.R,KEYS.RP,KEYS.RF,KEYS.U,KEYS.M,KEYS.H].forEach(k=> localStorage.removeItem(k));
+      }catch(_){}
+    },
+
+    // ------- API kompatibel (getter sinkron — baca dari cache) -------
+    getParticipants(){ return cache.participants; },
+    async setParticipants(rows){
+      cache.participants = Array.isArray(rows)? rows: [];
+      await db.participants.clear();
+      if (cache.participants.length) await db.participants.bulkPut(cache.participants);
+    },
+
+    getReports(){ return cache.reports; },
+    async setReports(rows){
+      cache.reports = Array.isArray(rows)? rows: [];
+      // pastikan setiap baris punya _key
+      cache.reports.forEach(r => r._key = r._key || (r.nik + '|' + r.report_date));
+      await db.reports.clear();
+      if (cache.reports.length) await db.reports.bulkPut(cache.reports);
+    },
+    async upsertReportLocal(obj){
+      const key = obj._key || (obj.nik + '|' + obj.report_date);
+      const i = cache.reports.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === key);
+      if (i>-1) cache.reports[i] = { ...cache.reports[i], ...obj, _key:key };
+      else cache.reports.push({ ...obj, _key:key });
+      await db.reports.put(cache.reports.find(r => r._key===key));
+    },
+
+    getPending(){ return cache.reports_pending; },
+    async setPending(rows){
+      cache.reports_pending = Array.isArray(rows)? rows: [];
+      cache.reports_pending.forEach(r => r._key = r._key || (r.nik + '|' + r.report_date));
+      await db.reports_pending.clear();
+      if (cache.reports_pending.length) await db.reports_pending.bulkPut(cache.reports_pending);
+    },
+    async addPending(obj){
+      const key = obj._key || (obj.nik + '|' + obj.report_date);
+      const row = { ...obj, _key:key };
+      cache.reports_pending.push(row);
+      await db.reports_pending.put(row);
+    },
+    async removePendingByKey(k){
+      cache.reports_pending = cache.reports_pending.filter(r => r._key !== k);
+      await db.reports_pending.delete(k);
+    },
+
+    getFailed(){ return cache.reports_failed; },
+    async setFailed(rows){
+      cache.reports_failed = Array.isArray(rows)? rows: [];
+      cache.reports_failed.forEach(r => r._key = r._key || (r.nik + '|' + r.report_date));
+      await db.reports_failed.clear();
+      if (cache.reports_failed.length) await db.reports_failed.bulkPut(cache.reports_failed);
+    },
+    async addFailed(obj){
+      const key = obj._key || (obj.nik + '|' + obj.report_date);
+      const row = { ...obj, _key:key };
+      cache.reports_failed.push(row);
+      await db.reports_failed.put(row);
+    },
+    async removeFailedByKey(k){
+      cache.reports_failed = cache.reports_failed.filter(r => r._key !== k);
+      await db.reports_failed.delete(k);
+    },
+
+    getUsers(){ return cache.users; },
+    async setUsers(rows){
+      cache.users = Array.isArray(rows)? rows: [];
+      await db.users.clear();
+      if (cache.users.length) await db.users.bulkPut(cache.users);
+    },
+
+    getMeta(){ return cache.meta; },
+    async setMeta(meta){ await persistMeta(meta); },
+
+    getHolidays(){ return cache.holidays; },
+    async setHolidays(arr){
+      const list = Array.isArray(arr)? arr: [];
+      cache.holidays = list;
+      await db.holidays.clear();
+      if (list.length) await db.holidays.bulkPut(list.map(iso => ({ iso })));
+    },
+
+    getReportByKey(k){ return cache.reports.find(r => (r._key || (r.nik+'|'+r.report_date)) === k); },
+    async deleteReportByKey(k){
+      cache.reports = cache.reports.filter(r => (r._key || (r.nik+'|'+r.report_date)) !== k);
+      await db.reports.delete(k);
+    },
+    async updateReportByKey(k, patch){
+      const i = cache.reports.findIndex(r => (r._key || (r.nik+'|'+r.report_date)) === k);
+      if (i>-1){
+        cache.reports[i] = { ...cache.reports[i], ...(patch||{}) };
+        await db.reports.put(cache.reports[i]);
+      }
+    },
+
+    // clear helpers
+    async clearReports(){ cache.reports=[]; await db.reports.clear(); },
+    async clearParticipants(){ cache.participants=[]; await db.participants.clear(); },
+    async clearQueues(){ cache.reports_pending=[]; cache.reports_failed=[]; await db.reports_pending.clear(); await db.reports_failed.clear(); },
+    async clearUsers(){ cache.users=[]; await db.users.clear(); },
+    async clearMeta(){ cache.meta={ key:'app_meta', lastSyncAt:null, version:1, migrated:true }; await db.meta.put(cache.meta); },
+    async clearAll(){
+      await db.transaction('rw', db.tables, async ()=>{
+        for (const t of db.tables) await t.clear();
+        await db.meta.put({ key:'app_meta', lastSyncAt:null, version:1, migrated:true });
+      });
+      await loadAllIntoCache();
+    }
+  };
+
+  return api;
 })();
+
 
 /* ===================== 5) RENDER ===================== */
 function renderStats(){
@@ -1373,11 +1595,53 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       const target = document.getElementById(pageId);
       if (target) target.classList.add('active');
+
+      // Reset scroll agar halaman baru tampil dari atas
+      const contentEl = document.querySelector('.content');
+      if (contentEl) contentEl.scrollTop = 0;
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch(e){ window.scrollTo(0,0); }
+
       if (pageId==='settings-page') renderUsersTable();
       if (pageId==='report-page') renderReportsTable();
       if (pageId==='dashboard-page'){ renderStats(); renderDashboard(); }
       if (pageId==='monitoring-page') renderMonitoringTable();
       if (pageId==='failedsync-page') renderFailedSyncPage();
+
+      // === Embedded Download (konv/index.html) ===
+      // Beberapa browser/server menunda load iframe saat elemen tersembunyi.
+      // Jadi kita set src saat page "Download" benar-benar dibuka.
+      if (pageId==='extractor-page'){
+        const frame = document.getElementById('extractor-frame');
+        const loading = document.getElementById('extractor-loading');
+        if (frame){
+          // pasang handler sekali
+          if (!frame.__bindDone){
+            frame.addEventListener('load', () => {
+              if (loading) loading.style.display = 'none';
+            });
+            frame.addEventListener('error', () => {
+              if (loading){
+                loading.style.display = 'flex';
+                loading.innerHTML = `<div style="padding:16px;line-height:1.4;">
+                  <div style="font-weight:800;color:#b91c1c;">Gagal memuat halaman konv/index.html</div>
+                  <div style="margin-top:6px;color:var(--gray);">
+                    Pastikan folder <b>konv</b> berada satu level dengan halaman utama dan dapat diakses lewat browser.
+                  </div>
+                </div>`;
+              }
+            });
+            frame.__bindDone = true;
+          }
+
+          // trigger load (sekali / atau paksa reload jika sebelumnya belum sukses)
+          const src = frame.getAttribute('data-src') || frame.getAttribute('src') || 'konv/index.html';
+          if (!frame.getAttribute('src')){
+            if (loading) loading.style.display = 'flex';
+            frame.setAttribute('src', src + (src.includes('?') ? '&' : '?') + 'embed=1&_ts=' + Date.now());
+          }
+        }
+      }
+      
       attachExportButtons();
       
     });
@@ -2057,10 +2321,14 @@ function ensureExportBtn({ hostSelector, btnId, tableSelector, label='Export Exc
 
 /* ===================== 13) BOOTSTRAP ===================== */
 document.addEventListener('DOMContentLoaded', async function(){
+  // 0) Pastikan DB siap dan lakukan migrasi dari localStorage kalau perlu
+  if (DB && typeof DB.ready === 'function') await DB.ready();
+  if (DB && typeof DB.migrateFromLocalIfNeeded === 'function') await DB.migrateFromLocalIfNeeded();
+
+  // 1) Render awal (semua getter DB sudah aman dipakai)
   renderReportsTable(); renderStats(); renderUsersTable(); renderMonitoringTable(); buildFilterOptionsFromParticipants(); renderFailedSyncPage(); renderDashboard();
 
-
-  // Chart stub (opsional)
+  /*// 2) Chart stub (opsional) — biarkan seperti semula
   const t1 = $('#topScoresChart'); const t2 = $('#scoreDistributionChart');
   if (window.Chart) {
     if (t1) new Chart(t1.getContext('2d'), {
@@ -2072,9 +2340,9 @@ document.addEventListener('DOMContentLoaded', async function(){
       data:{ labels:['Hijau (90-100)','Kuning (76-89)','Merah (60-75)','Hitam (<60)'], datasets:[{ data:[0,0,0,0] }] },
       options:{ responsive:true, plugins:{ legend:{ position:'bottom' } } }
     });
-  }
+  }*/
 
-  // Warm-up awal kalau lokal kosong
+  // 3) Warm-up awal jika kosong → tarik dari server
   const needWarmup = DB.getParticipants().length===0 || DB.getReports().length===0 || DB.getUsers().length===0;
   if (needWarmup) { try{ await syncAll(); }catch(_){ /* offline ok */ } }
 });

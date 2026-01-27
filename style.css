@@ -645,3 +645,50 @@ body {
   }
   /* Teks nilai tetap ada tapi tidak terlihat (untuk kebutuhan data) */
   .score-text { opacity: 0; }
+
+
+/* Embedded page (Download -> konv/index.html) */
+.embed-loading{
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  background: #fff;
+}
+.embed-loading .spinner{
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 3px solid rgba(0,0,0,.15);
+  border-top-color: rgba(0,0,0,.5);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin{ to { transform: rotate(360deg); } }
+/* Embedded Download (iframe) */
+.embed-body{
+  padding: 0 !important;
+  height: calc(100vh - 190px); /* header + spacing */
+  min-height: 70vh;
+  position: relative;
+  display: flex;
+}
+.embed-loading{
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.embed-frame{
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+  flex: 1;
+}
+@media (max-width: 768px){
+  .embed-body{ height: calc(100vh - 220px); }
+}
+

@@ -33,6 +33,7 @@
           <li><a href="#" data-page="sync"><i class="fas fa-sync"></i> Sinkronisasi</a></li>
           <li><a href="#" data-page="settings"><i class="fas fa-cog"></i> Settings</a></li>
           <li><a href="#" data-page="failedsync"><i class="fas fa-exclamation-triangle"></i> Gagal Sync</a></li>
+          <li><a href="#" data-page="extractor"><i class="fas fa-database"></i> Ekstraksi</a></li>
         </ul>
       </div>
     </div>
@@ -255,7 +256,6 @@
                 <div class="table-container">
                   <table class="data-table">
                     <thead id="monitoring-thead"></thead>
-                    </thead>
                     <tbody></tbody>
                   </table>
                 </div>
@@ -419,7 +419,31 @@
     </div>
   </div>
 
+
+        <!-- Download / Extractor Page (Embedded) -->
+        <div id="extractor-page" class="page">
+          <div class="card">
+            <div class="card-header"><h3>Download Data (Embedded)</h3></div>
+            <div class="card-body embed-body">
+              <div class="embed-loading" id="extractor-loading">
+                <div class="spinner"></div>
+                <div>
+                  <div style="font-weight:700;">Memuat halaman download…</div>
+                  <div style="font-size:.9rem;color:var(--gray);">Jika tidak tampil, pastikan folder <b>konv</b> berada satu level dengan halaman utama.</div>
+                </div>
+              </div>
+              <iframe
+                id="extractor-frame"
+                class="embed-frame"
+                data-src="konv/index.html"
+                loading="lazy"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+
   <!-- App -->
+  <script src="https://unpkg.com/dexie@3/dist/dexie.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

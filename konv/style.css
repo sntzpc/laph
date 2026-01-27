@@ -1,0 +1,43 @@
+/* Custom styles untuk aplikasi */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Animasi untuk tabel row */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Styling untuk tabel */
+table {
+    font-size: 0.875rem;
+}
+
+th {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Styling untuk nilai */
+.nilai-4 { background-color: #d1fae5; color: #065f46; }
+.nilai-3 { background-color: #fef3c7; color: #92400e; }
+.nilai-2 { background-color: #fde68a; color: #92400e; }
+.nilai-1 { background-color: #fecaca; color: #991b1b; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    table {
+        font-size: 0.75rem;
+    }
+}
