@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visit Magang Agronomi</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">VM</div>
+        <div>
+          <h1>Visit Magang</h1>
+          <p>Agronomi • Offline IndexedDB</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-view="dashboardView">Dashboard</button>
+        <button class="nav-btn" data-view="visitFormView">Form Visit</button>
+        <button class="nav-btn" data-view="reportsView">Laporan</button>
+        <button class="nav-btn" data-view="masterView">Master Peserta</button>
+        <button class="nav-btn" data-view="guideView">Panduan Visit</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <label class="switch-card">
+          <span>Dark mode</span>
+          <label class="switch">
+            <input type="checkbox" id="themeToggle" />
+            <span class="slider"></span>
+          </label>
+        </label>
+
+        <button class="danger ghost" id="resetAppBtn">Reset semua data aplikasi</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle">Ringkasan hasil visit dan data peserta magang.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost" id="openGuideBtn">Panduan Visit</button>
+          <button class="secondary" id="exportXlsxBtn">Export Laporan .xlsx</button>
+        </div>
+      </header>
+
+      <section id="dashboardView" class="view active">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Total Peserta</span>
+            <strong id="statParticipants">0</strong>
+            <small>tersimpan di master</small>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Total Laporan Visit</span>
+            <strong id="statReports">0</strong>
+            <small>siap diedit & diexport</small>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Unit Tercakup</span>
+            <strong id="statUnits">0</strong>
+            <small>berdasarkan master peserta</small>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Visit Terakhir</span>
+            <strong id="statLastVisit">-</strong>
+            <small>tanggal laporan terbaru</small>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Fokus visit yang bermakna</h3>
+            </div>
+            <div class="checklist-grid">
+              <label><input type="checkbox" checked disabled> Bangun kedekatan & cek adaptasi</label>
+              <label><input type="checkbox" checked disabled> Uji pemahaman pekerjaan hari itu</label>
+              <label><input type="checkbox" checked disabled> Observasi langsung di lapangan</label>
+              <label><input type="checkbox" checked disabled> Berikan micro teaching singkat</label>
+              <label><input type="checkbox" checked disabled> Catat hasil, tantangan, dan tindak lanjut</label>
+              <label><input type="checkbox" checked disabled> Kirim ringkasan cepat ke WhatsApp</label>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Laporan terbaru</h3>
+            </div>
+            <div id="recentReports" class="stack-list empty-state">Belum ada laporan visit.</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="visitFormView" class="view">
+        <form id="visitForm" class="panel form-panel">
+          <div class="panel-head between">
+            <h3>Form Visit Lapangan</h3>
+            <div class="inline-actions">
+              <span id="editingBadge" class="badge hidden">Mode edit</span>
+              <button type="button" class="ghost" id="clearFormBtn">Form baru</button>
+            </div>
+          </div>
+
+          <div class="guide-strip">
+            <div>
+              <strong>Panduan visit lapangan siap dibuka kapan saja</strong>
+              <small>Gunakan sebagai coaching guide agar visit lebih bermakna dan menghasilkan output pembelajaran.</small>
+            </div>
+            <button type="button" class="secondary" id="openGuideFromFormBtn">Buka panduan</button>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="visitDate">Tanggal visit</label>
+              <input type="date" id="visitDate" required />
+            </div>
+            <div class="field">
+              <label for="location">Lokasi / estate / titik visit</label>
+              <input type="text" id="location" placeholder="Contoh: SD SRIE / Afdeling 2" required />
+            </div>
+            <div class="field full">
+              <label for="participantSearch">Cari mentee / peserta</label>
+              <input type="text" id="participantSearch" placeholder="Ketik beberapa huruf nama / NIK / unit..." autocomplete="off" />
+              <div id="participantSuggestions" class="suggestions hidden"></div>
+              <small>Bisa pilih lebih dari satu peserta untuk satu visit.</small>
+            </div>
+            <div class="field full">
+              <label>Peserta terpilih</label>
+              <div id="selectedParticipants" class="selected-chips empty-box">Belum ada peserta dipilih.</div>
+            </div>
+
+            <div class="field full">
+              <label for="summary">Ringkasan kunjungan</label>
+              <textarea id="summary" rows="4" placeholder="Gambaran umum kunjungan, suasana, dan tujuan pembinaan." required></textarea>
+            </div>
+
+            <div class="field">
+              <label for="activityReview">Aktivitas peserta saat ini</label>
+              <textarea id="activityReview" rows="4" placeholder="Pekerjaan yang sedang dipelajari atau dilakukan."></textarea>
+            </div>
+            <div class="field">
+              <label for="technicalUnderstanding">Pemahaman teknis</label>
+              <textarea id="technicalUnderstanding" rows="4" placeholder="Hasil tanya jawab, pemahaman sebab-akibat, indikator kerja."></textarea>
+            </div>
+
+            <div class="field">
+              <label for="fieldObservation">Observasi lapangan</label>
+              <textarea id="fieldObservation" rows="4" placeholder="Temuan saat melihat langsung di lapangan."></textarea>
+            </div>
+            <div class="field">
+              <label for="microTeaching">Micro teaching / ilmu yang diberikan</label>
+              <textarea id="microTeaching" rows="4" placeholder="Poin pembelajaran singkat yang Anda ajarkan saat visit."></textarea>
+            </div>
+
+            <div class="field">
+              <label for="livingCondition">Adaptasi, tempat tinggal, makan, uang saku</label>
+              <textarea id="livingCondition" rows="4" placeholder="Kondisi umum peserta di lokasi magang."></textarea>
+            </div>
+            <div class="field">
+              <label for="motivationFuture">Motivasi & arah masa depan</label>
+              <textarea id="motivationFuture" rows="4" placeholder="Diskusi cita-cita, semangat, dan mindset kerja."></textarea>
+            </div>
+
+            <div class="field">
+              <label for="resultsObtained">Hasil yang diperoleh</label>
+              <textarea id="resultsObtained" rows="4" placeholder="Output visit: pemahaman baru, perbaikan sikap, aksi nyata, dll." required></textarea>
+            </div>
+            <div class="field">
+              <label for="followUp">Tindak lanjut / challenge berikutnya</label>
+              <textarea id="followUp" rows="4" placeholder="PR atau target yang perlu dicek pada visit berikutnya."></textarea>
+            </div>
+
+            <div class="field full">
+              <label for="specialNotes">Catatan khusus</label>
+              <textarea id="specialNotes" rows="3" placeholder="Catatan tambahan bila ada."></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="primary">Simpan laporan visit</button>
+            <button type="button" class="secondary" id="previewWhatsappBtn">Preview WhatsApp</button>
+          </div>
+        </form>
+
+        <article class="panel">
+          <div class="panel-head between">
+            <h3>Preview WhatsApp</h3>
+            <button class="ghost" id="copyWhatsappBtn" type="button">Salin teks</button>
+          </div>
+          <textarea id="whatsappPreview" rows="12" class="mono" readonly placeholder="Preview teks WhatsApp akan muncul di sini."></textarea>
+        </article>
+      </section>
+
+      <section id="reportsView" class="view">
+        <article class="panel">
+          <div class="panel-head between wrap">
+            <h3>Daftar laporan visit</h3>
+            <div class="filter-row">
+              <input type="text" id="reportSearch" placeholder="Cari tanggal, lokasi, mentee, unit..." />
+              <select id="reportUnitFilter">
+                <option value="">Semua unit</option>
+              </select>
+            </div>
+          </div>
+          <div id="reportsContainer" class="report-list empty-state">Belum ada laporan tersimpan.</div>
+        </article>
+      </section>
+
+      <section id="masterView" class="view">
+        <article class="panel">
+          <div class="panel-head between wrap">
+            <h3>Master peserta magang</h3>
+            <div class="inline-actions wrap">
+              <button id="loadDefaultBtn" class="secondary" type="button">Muat data peserta bawaan</button>
+              <label class="file-btn">
+                Upload master .xlsx
+                <input type="file" id="masterUpload" accept=".xlsx" hidden />
+              </label>
+            </div>
+          </div>
+          <p class="muted">Unggah file master peserta terlebih dahulu. Data akan tersimpan di IndexedDB dan tetap bisa dipakai secara offline.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>NIK</th>
+                  <th>Nama</th>
+                  <th>Pelatihan</th>
+                  <th>Tahun</th>
+                  <th>Lokasi OJT</th>
+                  <th>Unit</th>
+                  <th>Region</th>
+                  <th>Group</th>
+                </tr>
+              </thead>
+              <tbody id="masterTableBody">
+                <tr><td colspan="8" class="empty-state">Belum ada data master peserta.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="guideView" class="view">
+        <article class="panel">
+          <div class="panel-head between wrap">
+            <h3>Panduan Visit Lapangan</h3>
+            <div class="tag">Bisa dibuka kapan saja</div>
+          </div>
+
+          <div class="guide-hero">
+            <div class="guide-hero-text">
+              <span class="guide-kicker">Mindset utama</span>
+              <h2>Visit = Coaching Lapangan</h2>
+              <p>Bukan sekadar menengok peserta, tetapi menguji, mengarahkan, dan menaikkan level berpikir peserta.</p>
+            </div>
+          </div>
+
+          <div class="guide-grid">
+            <section class="guide-card">
+              <h4>1. Ubah Mindset</h4>
+              <p><strong>Bukan sekadar:</strong> “menengok peserta”</p>
+              <p><strong>Tetapi menjadi:</strong> “menguji, mengarahkan, dan menaikkan level berpikir peserta”.</p>
+            </section>
+
+            <section class="guide-card guide-card-wide">
+              <h4>2. Struktur Visit yang Lebih Powerful — Framework 5 Tahap</h4>
+              <div class="stage-list">
+                <div class="stage-item">
+                  <div class="stage-num">1</div>
+                  <div>
+                    <h5>Opening — Bangun Kedekatan</h5>
+                    <p>Kabar & kondisi pribadi, adaptasi lingkungan, kendala hidup seperti makan dan tempat tinggal. Batasi sekitar 10–15 menit.</p>
+                  </div>
+                </div>
+                <div class="stage-item">
+                  <div class="stage-num">2</div>
+                  <div>
+                    <h5>Reality Check — Uji Pemahaman Nyata</h5>
+                    <p>Tanyakan: hari ini kerja apa, kenapa penting, indikator berhasil atau gagal, dan dampaknya ke produksi bila salah. Tujuannya melatih sebab-akibat.</p>
+                  </div>
+                </div>
+                <div class="stage-item">
+                  <div class="stage-num">3</div>
+                  <div>
+                    <h5>Thinking Upgrade — Latih Cara Berpikir Planters</h5>
+                    <p>Naikkan level dari pekerja menjadi calon manajer: apa yang akan diperbaiki bila jadi mandor, apa masalah terbesar di blok, penyebab produksi turun, cepat atau mutu.</p>
+                  </div>
+                </div>
+                <div class="stage-item">
+                  <div class="stage-num">4</div>
+                  <div>
+                    <h5>Micro Teaching di Lapangan</h5>
+                    <p>Wajib ada transfer ilmu. Pilih satu topik per visit seperti standar panen matang, kesalahan pemupukan, susun pelepah, atau losses dan dampaknya. Tunjuk objek nyata, jelaskan 5–10 menit, lalu minta peserta mengulang.</p>
+                  </div>
+                </div>
+                <div class="stage-item">
+                  <div class="stage-num">5</div>
+                  <div>
+                    <h5>Closing — Challenge & Target</h5>
+                    <p>Jangan pulang tanpa PR. Misalnya amati 10 pokok, catat kesalahan panen, atau jelaskan siklus panen saat visit berikutnya.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="guide-card">
+              <h4>3. Empat Elemen Penting</h4>
+              <ul class="guide-list">
+                <li><strong>Observasi langsung:</strong> lihat mereka bekerja, karena realita bisa berbeda dari cerita.</li>
+                <li><strong>Koreksi real time:</strong> langsung benarkan di tempat, jangan ditunda.</li>
+                <li><strong>Benchmark:</strong> bandingkan cara mereka dengan standar perusahaan dan best practice.</li>
+                <li><strong>Catatan perkembangan:</strong> siapa kuat di disiplin, siapa kuat di teknis, siapa lemah di attitude.</li>
+              </ul>
+            </section>
+
+            <section class="guide-card">
+              <h4>4. Format Visit Praktis</h4>
+              <ul class="guide-list">
+                <li>Opening — 10 menit</li>
+                <li>Tanya aktivitas — 10 menit</li>
+                <li>Uji pemahaman — 15 menit</li>
+                <li>Observasi kerja — 15–20 menit</li>
+                <li>Micro teaching — 10–15 menit</li>
+                <li>Diskusi & mindset — 10 menit</li>
+                <li>Closing + challenge — 5 menit</li>
+              </ul>
+              <p class="muted">Total ideal sekitar 60–90 menit per kelompok kecil.</p>
+            </section>
+
+            <section class="guide-card">
+              <h4>5. Output yang Diharapkan</h4>
+              <ul class="guide-list">
+                <li>Peserta tidak hanya kerja, tetapi paham kenapa kerja.</li>
+                <li>Peserta mulai berpikir seperti asisten atau manajer.</li>
+                <li>Peserta punya arah dan target belajar.</li>
+                <li>Anda dapat melihat siapa yang layak dibina dan siapa yang masih ikut-ikutan.</li>
+              </ul>
+            </section>
+
+            <section class="guide-card">
+              <h4>6. Upgrade Level</h4>
+              <ul class="guide-list">
+                <li>Mini kuis dadakan</li>
+                <li>Simulasi keputusan atau studi kasus singkat</li>
+                <li>Presentasi 2 menit di lapangan</li>
+              </ul>
+            </section>
+
+            <section class="guide-card guide-quote">
+              <h4>Insight Penting</h4>
+              <blockquote>Visit yang kuat bukan yang banyak ngobrol, tetapi yang mengubah cara berpikir peserta dalam 1 pertemuan.</blockquote>
+            </section>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <template id="suggestionItemTpl">
+    <button type="button" class="suggestion-item"></button>
+  </template>
+
+  <script src="libs/jszip.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

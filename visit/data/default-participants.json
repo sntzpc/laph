@@ -1,0 +1,552 @@
+[
+  {
+    "nik": 202601001,
+    "nama": "ADINDA YUMNAA DWI ADITYA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601002,
+    "nama": "AUDYA GITA SABINA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601003,
+    "nama": "KHALISA AZIZAH RAHMANITYA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601004,
+    "nama": "ROSIDA NUR KASANAH",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "PAUD STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601005,
+    "nama": "MIFTASYA FISABILLA FATHA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601006,
+    "nama": "RISALAH",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601007,
+    "nama": "ALMA'IDAH RAHMADANTHI SURYANA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "PAUD KHTE",
+    "unit": "KHTE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601008,
+    "nama": "VERA AGUSTINA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD KHTE",
+    "unit": "KHTE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601009,
+    "nama": "NIA SOVIANI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD KHTE",
+    "unit": "KHTE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601010,
+    "nama": "MUHAMAD AZWAR YUSUF",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601011,
+    "nama": "ILHAM ADI SAPUTRA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202601012,
+    "nama": "ANGGA EKA SAPUTRA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SD KHTE",
+    "unit": "KHTE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602013,
+    "nama": "DEWI KARTIKA TARIGAN",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SBSE",
+    "unit": "SBSE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602014,
+    "nama": "NANDA PERMATA HATI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SBSE",
+    "unit": "SBSE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602015,
+    "nama": "ALIYO",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SBSE",
+    "unit": "SBSE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602016,
+    "nama": "APRIYALDI ADRIANO SITEPU",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602017,
+    "nama": "AKWILA THEO GAMALIEL",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602018,
+    "nama": "MUHAMMAD FHUDHULI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIM",
+    "unit": "SRIM",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602019,
+    "nama": "DEDY INDRAWAN PUTRA NABABAN",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIM",
+    "unit": "SRIM",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602020,
+    "nama": "AZHARI YUSRIJAL",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIM",
+    "unit": "SRIM",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602021,
+    "nama": "BAGAS RADIKA PUTRA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STMA",
+    "unit": "STMA",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602022,
+    "nama": "MUHAMAD FAIZ AFRIZAL KHADAFI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STME",
+    "unit": "STME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602023,
+    "nama": "ILHAM DINATA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STME",
+    "unit": "STME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602024,
+    "nama": "ELYEZER VRISTO RAMBE",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BTUE",
+    "unit": "BTUE",
+    "region": "EMPANANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602025,
+    "nama": "LOMO DELON SAGALA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BTUE",
+    "unit": "BTUE",
+    "region": "EMPANANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602026,
+    "nama": "FINDA KURNIA PUTRI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SMWE",
+    "unit": "SMWE",
+    "region": "EMPANANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602027,
+    "nama": "KEVIN HATOGUAN SINAMBELA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SMWE",
+    "unit": "SMWE",
+    "region": "EMPANANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602028,
+    "nama": "MONICA DWI UTARI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SMWE",
+    "unit": "SMWE",
+    "region": "EMPANANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602029,
+    "nama": "HARDIANSYAH PUTRA SIPAHUTAR",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SBLE",
+    "unit": "SBLE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602030,
+    "nama": "ALRYA ADI KUSUMA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SBLE",
+    "unit": "SBLE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602031,
+    "nama": "DIMAS SATRIAWAN",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SKNE",
+    "unit": "SKNE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602032,
+    "nama": "NOVANDA ARDI RINATA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SKNE",
+    "unit": "SKNE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602033,
+    "nama": "ZAHARA ERWINI NURJANAH",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602034,
+    "nama": "VERONICA YANTI TINAMBUNAN",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602035,
+    "nama": "JEREMIA DELON RORITSKI SIMBOLON",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STWE",
+    "unit": "STWE",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602036,
+    "nama": "CANDRA ANDIKA SAPUTRA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STWM",
+    "unit": "STWM",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602037,
+    "nama": "DODY ALKARIA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STWM",
+    "unit": "STWM",
+    "region": "KENEPAI",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602038,
+    "nama": "BAGAS SAJIWO",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BBSE",
+    "unit": "BBSE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602039,
+    "nama": "FAHRI AFDILA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BBSE",
+    "unit": "BBSE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602040,
+    "nama": "MUHAMMAD FARID ALIFBI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SJRE",
+    "unit": "SJRE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602041,
+    "nama": "GALIH NUKI ARDIANSYAH",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SJRE",
+    "unit": "SJRE",
+    "region": "SEJIRAM",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602042,
+    "nama": "AZIZ MA'RUF MAULANA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SANE",
+    "unit": "SANE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602043,
+    "nama": "RIZKY ALDAFFA RAMADANA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SANE",
+    "unit": "SANE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602044,
+    "nama": "SYUKRI MUSTAFA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SDSE",
+    "unit": "SDSE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602045,
+    "nama": "SAPRIL PARDAMEAN SIHOMBING",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SDSE",
+    "unit": "SDSE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602046,
+    "nama": "SURYA DHARMA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SJNE",
+    "unit": "SJNE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602047,
+    "nama": "MUHAMMAD FIKRI AKMAL",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SJNE",
+    "unit": "SJNE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602048,
+    "nama": "MUHAMMAD IKHSAN",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SSPE",
+    "unit": "SSPE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602049,
+    "nama": "ANJASMORO",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SSPE",
+    "unit": "SSPE",
+    "region": "SINTANG",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602050,
+    "nama": "HELDA ROMURI PURBA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STME",
+    "unit": "STME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602051,
+    "nama": "MAY TESA",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "STME",
+    "unit": "STME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602052,
+    "nama": "MARIA IGNASIA B. DEMON",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602053,
+    "nama": "VINSENSA GEROSA JATI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BSME",
+    "unit": "BSME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602054,
+    "nama": "SAYENI CRISTINA BR. SIMANJUNTAK",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "BSME",
+    "unit": "BSME",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  },
+  {
+    "nik": 202602055,
+    "nama": "AGUSTINUS NOBEN FRESTAJI",
+    "jenis_pelatihan": "MAGANG",
+    "tahun": 2026,
+    "lokasi_ojt": "SRIE",
+    "unit": "SRIE",
+    "region": "BADAU",
+    "group": "MBKM BATCH 09-2026"
+  }
+]
