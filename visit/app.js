@@ -291,7 +291,7 @@ function renderDashboard() {
   $('#statParticipants').textContent = participantsCache.length;
   $('#statReports').textContent = reportsCache.length;
   $('#statUnits').textContent = new Set(participantsCache.map(p => p.unit).filter(Boolean)).size;
-  $('#statLastVisit').textContent = reportsCache[0]?.visitDate ? formatDateID(reportsCache[0].visitDate) : '-';
+  $('#statLastVisit').textContent = reportsCache[0]?.visitDate ? formatDateShortID(reportsCache[0].visitDate) : '-';
 
   const recent = reportsCache.slice(0, 5);
   const wrap = $('#recentReports');
@@ -304,7 +304,7 @@ function renderDashboard() {
   wrap.innerHTML = recent.map(r => `
     <div class="report-card">
       <h4>${escapeHtml(r.location || '-')}</h4>
-      <div class="report-meta">${formatDateID(r.visitDate)} • ${escapeHtml((r.mentees || []).map(x => x.nama).join(', '))}</div>
+      <div class="report-meta">${formatDateSlashID(r.visitDate)} • ${escapeHtml((r.mentees || []).map(x => x.nama).join(', '))}</div>
       <div>${escapeHtml(shorten(r.resultsObtained || r.summary || '-', 180))}</div>
       <div class="report-meta" style="margin-top:8px;">Status sinkron: ${escapeHtml(humanSyncStatus(r.syncStatus))}</div>
     </div>
@@ -521,7 +521,7 @@ function renderReports() {
       <div class="panel-head between wrap">
         <div>
           <h4>${escapeHtml(r.location || '-')}</h4>
-          <div class="report-meta">${formatDateID(r.visitDate)} • ${escapeHtml((r.mentees || []).map(m => m.nama).join(', '))}</div>
+          <div class="report-meta">${formatDateSlashID(r.visitDate)} • ${escapeHtml((r.mentees || []).map(m => m.nama).join(', '))}</div>
         </div>
         <div class="tag">${escapeHtml((r.mentees || []).map(m => m.unit).filter(Boolean).join(', ') || '-')}</div>
       </div>
@@ -623,17 +623,52 @@ async function resetAppData() {
   alert('Semua data aplikasi berhasil dihapus.');
 }
 
+function parseDateFlexible(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const isoDateOnly = /^\d{4}-\d{2}-\d{2}$/;
+  const slashDate = /^\d{2}\/\d{2}\/\d{4}$/;
+
+  let date;
+  if (isoDateOnly.test(raw)) {
+    date = new Date(raw + 'T00:00:00');
+  } else if (slashDate.test(raw)) {
+    const [dd, mm, yyyy] = raw.split('/');
+    date = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  } else {
+    date = new Date(raw);
+  }
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatDateID(value) {
   if (!value) return '-';
-  const date = new Date(value + 'T00:00:00');
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseDateFlexible(value);
+  if (!date) return value;
   return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+}
+
+function formatDateShortID(value) {
+  if (!value) return '-';
+  const date = parseDateFlexible(value);
+  if (!date) return value;
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+function formatDateSlashID(value) {
+  if (!value) return '-';
+  const date = parseDateFlexible(value);
+  if (!date) return value;
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 }
 
 function formatDateTimeID(value) {
   if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseDateFlexible(value);
+  if (!date) return value;
   return new Intl.DateTimeFormat('id-ID', {
     day: '2-digit', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit'
