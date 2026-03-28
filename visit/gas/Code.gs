@@ -33,12 +33,27 @@ function doPost(e) {
   const params = Object.assign({}, e.parameter || {});
   const result = handleRequest_(params, e);
   const opId = params.opId || '';
-
-  return HtmlService.createHtmlOutput(
+  const message = JSON.stringify({ __visitSync: true, opId: opId, payload: result });
+  const html = '' +
+    '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>' +
     '<script>' +
-    'window.top.postMessage(' + JSON.stringify({ __visitSync: true, opId: opId, payload: result }) + ', "*");' +
-    '</script>'
-  );
+    '(function(){' +
+      'var msg=' + JSON.stringify(message) + ';' +
+      'try{ msg = JSON.parse(msg); }catch(e){}' +
+      'var sent=false;' +
+      'function sendTo(target){' +
+        'if(!target || typeof target.postMessage !== "function") return;' +
+        'try{ target.postMessage(msg, "*"); sent=true; }catch(err){}' +
+      '}' +
+      'sendTo(window.parent);' +
+      'sendTo(window.top);' +
+      'sendTo(window.opener);' +
+      'setTimeout(function(){ sendTo(window.parent); sendTo(window.top); sendTo(window.opener); }, 150);' +
+      'document.body.innerHTML = sent ? "OK" : "NO_TARGET";' +
+    '})();' +
+    '</script></body></html>';
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function handleRequest_(params, e) {

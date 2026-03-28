@@ -60,3 +60,9 @@ Fitur utama:
 - Progress bar sinkronisasi.
 - Indikator konflik antar perangkat.
 - Retry data gagal sinkron.
+
+
+Perbaikan Chrome Mobile:
+- Request Apps Script sekarang memprioritaskan POST via iframe + postMessage.
+- JSONP hanya dipakai sebagai cadangan.
+- Backend doPost diperkuat agar mengirim respon ke parent/top/opener dan mengizinkan iframe (ALLOWALL).

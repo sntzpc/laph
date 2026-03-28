@@ -728,7 +728,7 @@ async function testSyncConnection() {
   try {
     ensureSyncReady();
     setSyncStatus('Menguji koneksi ke Apps Script dan Google Sheet...', 'info');
-    const res = await jsonpGet({
+    const res = await appsScriptRequest({
       action: 'init',
       t: Date.now()
     });
@@ -829,7 +829,7 @@ function rowsAreDifferent(a, b) {
 }
 
 async function fetchRemoteEntity(entityType, entityId) {
-  const res = await jsonpGet({
+  const res = await appsScriptRequest({
     action: 'getOne',
     entityType,
     entityId,
@@ -927,7 +927,7 @@ async function pullCloudData() {
   try {
     ensureSyncReady();
     setSyncStatus('Menarik data dari Google Sheet...', 'info');
-    const res = await jsonpGet({
+    const res = await appsScriptRequest({
       action: 'pull',
       t: Date.now()
     });
@@ -1132,12 +1132,30 @@ function isIncomingNewer(incoming, existing) {
   return new Date(incoming || 0).getTime() >= new Date(existing || 0).getTime();
 }
 
-function jsonpGet(params) {
+async function appsScriptRequest(params) {
+  try {
+    return await postViaIframe(params, { timeoutMs: 30000 });
+  } catch (postError) {
+    try {
+      return await jsonpGetLegacy(params);
+    } catch (jsonpError) {
+      const err = new Error(
+        'Gagal terhubung ke Apps Script. POST iframe gagal: ' + (postError?.message || postError) +
+        ' | JSONP cadangan gagal: ' + (jsonpError?.message || jsonpError)
+      );
+      err.postError = postError;
+      err.jsonpError = jsonpError;
+      throw err;
+    }
+  }
+}
+
+function jsonpGetLegacy(params) {
   return new Promise((resolve, reject) => {
     const callbackName = '__jsonp_cb_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
     const url = new URL(GAS_WEBAPP_URL);
-    Object.entries({ ...params, callback: callbackName }).forEach(([k, v]) => url.searchParams.set(k, v));
+    Object.entries({ ...params, callback: callbackName, _: Date.now() }).forEach(([k, v]) => url.searchParams.set(k, v));
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error('JSONP timeout. Pastikan URL Web App benar dan deploy Apps Script sudah publik.'));
@@ -1162,7 +1180,7 @@ function jsonpGet(params) {
   });
 }
 
-function postViaIframe(params) {
+function postViaIframe(params, options = {}) {
   return new Promise((resolve, reject) => {
     const opId = 'op_' + Math.random().toString(36).slice(2);
     const iframe = document.createElement('iframe');
@@ -1183,10 +1201,11 @@ function postViaIframe(params) {
       form.appendChild(input);
     });
 
+    const timeoutMs = Number(options.timeoutMs || 30000);
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error('Sinkron POST timeout. Cek deploy Apps Script dan koneksi internet.'));
-    }, 30000);
+    }, timeoutMs);
 
     function cleanup() {
       clearTimeout(timeout);
