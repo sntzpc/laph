@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Visit Magang Agronomi</title>
+  <title>Visit Training</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,8 +12,8 @@
       <div class="brand">
         <div class="brand-badge">VM</div>
         <div>
-          <h1>Visit Magang</h1>
-          <p>Agronomi • Offline IndexedDB</p>
+          <h1>Visit Training</h1>
+          <p>SNTZ • Offline</p>
         </div>
       </div>
 
@@ -22,6 +22,8 @@
         <button class="nav-btn" data-view="visitFormView">Form Visit</button>
         <button class="nav-btn" data-view="reportsView">Laporan</button>
         <button class="nav-btn" data-view="masterView">Master Peserta</button>
+        <button class="nav-btn" data-view="conflictsView">Konflik Data</button>
+        <button class="nav-btn" data-view="failedSyncView">Gagal Sinkron</button>
         <button class="nav-btn" data-view="guideView">Panduan Visit</button>
       </nav>
 
@@ -42,7 +44,7 @@
       <header class="topbar">
         <div>
           <h2 id="pageTitle">Dashboard</h2>
-          <p id="pageSubtitle">Ringkasan hasil visit dan data peserta magang.</p>
+          <p id="pageSubtitle">Ringkasan hasil visit dan data peserta training.</p>
         </div>
         <div class="topbar-actions">
           <button class="ghost" id="openGuideBtn">Panduan Visit</button>
@@ -51,6 +53,7 @@
       </header>
 
       <section id="dashboardView" class="view active">
+        <div id="startupSyncNotice" class="startup-notice hidden"></div>
         <div class="stats-grid">
           <div class="stat-card">
             <span class="stat-label">Total Peserta</span>
@@ -73,6 +76,64 @@
             <small>tanggal laporan terbaru</small>
           </div>
         </div>
+
+        <article class="panel sync-panel">
+          <div class="panel-head between wrap">
+            <div>
+              <h3>Sinkronisasi Database Online</h3>
+              <p class="muted">Data tersimpan lokal, bisa dikirim dan ditarik dari Server.</p>
+            </div>
+            <div class="sync-mini-stats">
+              <div class="tag">Antrian total: <strong id="syncTotalQueue">0</strong></div>
+              <div class="tag">Laporan pending: <strong id="pendingReportsCount">0</strong></div>
+              <div class="tag">Master pending: <strong id="pendingParticipantsCount">0</strong></div>
+            </div>
+          </div>
+
+          <div class="sync-grid">
+            <div class="field full">
+              <label>Endpoint sinkronisasi aktif</label>
+              <div class="readonly-box" id="syncEndpointLabel">Hardcode di aplikasi</div>
+            </div>
+            <div class="field">
+              <label for="deviceName">Nama perangkat</label>
+              <input type="text" id="deviceName" placeholder="Contoh: Laptop TC Head" />
+            </div>
+            <div class="field full">
+              <label class="check-inline">
+                <input type="checkbox" id="autoSyncOnSave" />
+                <span>Sinkron otomatis setiap simpan / edit laporan</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="sync-progress-card hidden" id="syncProgressCard">
+            <div class="sync-progress-head">
+              <strong id="syncProgressTitle">Menyiapkan sinkronisasi...</strong>
+              <span id="syncProgressPercent">0%</span>
+            </div>
+            <div class="sync-progress-track"><div class="sync-progress-fill" id="syncProgressFill"></div></div>
+            <div class="sync-progress-meta">
+              <span id="syncProgressStep">Memulai...</span>
+              <span id="syncProgressCount">0/0</span>
+            </div>
+          </div>
+
+          <div class="sync-actions">
+            <button class="secondary" type="button" id="saveSyncConfigBtn">Simpan Pengaturan</button>
+            <button class="ghost" type="button" id="testConnectionBtn">Tes Koneksi</button>
+            <button class="primary" type="button" id="pushSyncBtn">Kirim Antrian ke Server</button>
+            <button class="secondary" type="button" id="pullSyncBtn">Tarik Data dari Server</button>
+            <button class="ghost" type="button" id="fullSyncBtn">Sinkron Penuh</button>
+          </div>
+
+          <div class="sync-footnote">
+            <div>Push terakhir: <strong id="syncLastPush">-</strong></div>
+            <div>Pull terakhir: <strong id="syncLastPull">-</strong></div>
+          </div>
+
+          <div id="syncStatusBox" class="sync-status info">Belum ada proses sinkronisasi.</div>
+        </article>
 
         <div class="content-grid">
           <article class="panel">
@@ -123,7 +184,7 @@
             </div>
             <div class="field">
               <label for="location">Lokasi / estate / titik visit</label>
-              <input type="text" id="location" placeholder="Contoh: SD SRIE / Afdeling 2" required />
+              <input type="text" id="location" placeholder="Contoh: SD SRIE / Divisi 2" required />
             </div>
             <div class="field full">
               <label for="participantSearch">Cari mentee / peserta</label>
@@ -213,6 +274,31 @@
         </article>
       </section>
 
+      <section id="conflictsView" class="view">
+        <article class="panel">
+          <div class="panel-head between wrap">
+            <h3>Indikator Konflik Data Antar Perangkat</h3>
+            <div class="sync-mini-stats">
+              <div class="tag">Total konflik: <strong id="conflictCount">0</strong></div>
+            </div>
+          </div>
+          <div id="conflictsContainer" class="stack-list empty-state">Belum ada konflik data.</div>
+        </article>
+      </section>
+
+      <section id="failedSyncView" class="view">
+        <article class="panel">
+          <div class="panel-head between wrap">
+            <h3>Data Gagal Sinkron</h3>
+            <div class="inline-actions">
+              <div class="tag">Total gagal: <strong id="failedSyncCount">0</strong></div>
+              <button class="secondary" type="button" id="retryAllFailedBtn">Sinkron Ulang Semua Gagal</button>
+            </div>
+          </div>
+          <div id="failedSyncContainer" class="stack-list empty-state">Belum ada data gagal sinkron.</div>
+        </article>
+      </section>
+
       <section id="masterView" class="view">
         <article class="panel">
           <div class="panel-head between wrap">
@@ -238,10 +324,11 @@
                   <th>Unit</th>
                   <th>Region</th>
                   <th>Group</th>
+                  <th>Status Sync</th>
                 </tr>
               </thead>
               <tbody id="masterTableBody">
-                <tr><td colspan="8" class="empty-state">Belum ada data master peserta.</td></tr>
+                <tr><td colspan="9" class="empty-state">Belum ada data master peserta.</td></tr>
               </tbody>
             </table>
           </div>
