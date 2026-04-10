@@ -1799,6 +1799,20 @@ if (reportForm) {
       if ($('#report-date') && $('#report-date')._flatpickr) $('#report-date')._flatpickr.setDate(kemarin, true);
       if ($('#send-datetime') && $('#send-datetime')._flatpickr) $('#send-datetime')._flatpickr.setDate(new Date(), true);
     }
+
+    // Auto fokus kembali ke field NIK agar input laporan berikutnya lebih cepat
+    const nikField = $('#nik');
+    if (nikField) {
+      requestAnimationFrame(() => {
+        nikField.focus();
+        nikField.select?.();
+      });
+      setTimeout(() => {
+        nikField.focus();
+        nikField.select?.();
+      }, 50);
+    }
+
     unlockBtn();
   });
 }
