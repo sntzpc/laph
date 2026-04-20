@@ -128,6 +128,76 @@ function fmtWIBddmmyyyy(input){
   return input;
 }
 
+function getDefaultReportDate(){
+  const d = new Date();
+  d.setDate(d.getDate()-1);
+  return d;
+}
+function getDefaultSendDateTime(){
+  return new Date();
+}
+function resetReportEntryFields(){
+  const rpt = $('#report-date');
+  const snd = $('#send-datetime');
+  const nik = $('#nik');
+  if (rpt){
+    if (rpt._flatpickr) rpt._flatpickr.setDate(getDefaultReportDate(), true);
+    else rpt.value = toDDMMYYYY(getDefaultReportDate());
+  }
+  if (snd){
+    if (snd._flatpickr) snd._flatpickr.setDate(getDefaultSendDateTime(), true);
+    else {
+      const now = getDefaultSendDateTime();
+      snd.value = `${toDDMMYYYY(now)} ${dd(now.getHours())}:${dd(now.getMinutes())}`;
+    }
+  }
+  if (nik){
+    requestAnimationFrame(() => { nik.focus(); nik.select?.(); });
+    setTimeout(() => { nik.focus(); nik.select?.(); }, 50);
+  }
+}
+function upsertPendingReport(row, oldKey){
+  const currentKey = row && row._key ? row._key : (row.nik + '|' + row.report_date);
+  if (oldKey && oldKey !== currentKey) DB.removePendingByKey(oldKey);
+  DB.removePendingByKey(currentKey);
+  DB.addPending({ ...row, _key: currentKey });
+}
+
+const SCORE_DONUT_COLORS = {
+  hijau: '#22c55e',
+  kuning: '#facc15',
+  merah: '#ef4444',
+  hitam: '#111111'
+};
+
+function buildReportPayloadForServer(row, extra = {}){
+  const report_date = fmtWIBddmmyyyy(row?.report_date || '');
+  const send_date = fmtWIBddmmyyyy(row?.send_date || '');
+  const send_time = coerceHHMM(row?.send_time || '');
+  const nik = String(row?.nik || '').trim();
+  const id = String(row?.id || '').trim();
+  const score = (row && row.score !== undefined && row.score !== null && row.score !== '') ? Number(row.score) : '';
+  const base = {
+    id,
+    nik,
+    report_date,
+    send_date,
+    send_time,
+    score,
+    _key: (row && row._key) ? row._key : (nik && report_date ? (nik + '|' + report_date) : '')
+  };
+  return { ...base, ...extra };
+}
+
+function buildDeletePayloadForServer(row, extra = {}){
+  return {
+    id: String(row?.id || '').trim(),
+    nik: String(row?.nik || '').trim(),
+    report_date: fmtWIBddmmyyyy(row?.report_date || ''),
+    ...extra
+  };
+}
+
 /* ===================== [HOL] HOLIDAYS UTIL & STYLE ===================== */
 
 // === NORMALISASI DATA LIBUR → selalu simpan array ISO 'YYYY-MM-DD' (unik) ===
@@ -596,10 +666,10 @@ function openEditReportModal({ key, id }) {
     // 4) Jika tanggal laporan berubah, _key juga berubah
     const newKey = nik + '|' + report_date;
 
-    // 5) Update lokal (optimistic)
-    DB.deleteReportByKey(key);
-    DB.upsertReportLocal({
+    // 5) Update lokal (optimistic) + masukkan ke antrean sync
+    const updatedRow = {
       ...data,
+      id: data.id || id || '',
       report_date,
       send_date,
       send_time,
@@ -607,35 +677,18 @@ function openEditReportModal({ key, id }) {
       _key: newKey,
       isSynced: false,
       synced_at: ''
-    });
+    };
+    DB.deleteReportByKey(key);
+    DB.upsertReportLocal(updatedRow);
+    upsertPendingReport(updatedRow, key);
     renderReportsTable();
     renderStats();
+    renderQueueInfo();
     if (typeof renderMonitoringTable === 'function') renderMonitoringTable();
 
-    // 6) (opsional) kirim ke server sekarang; kalau offline akan tetap aman di lokal
-    try{
-      const res = await Loader.withLoading('Menyimpan perubahan...', apiPost({
-        action:'upsertReport',
-        nik, report_date, send_date, send_time, score: finalScore
-      }));
-      if (res && res.ok){
-        DB.updateReportByKey(newKey, {
-          id: res.id || data.id,
-          isSynced: true,
-          synced_at: new Date().toISOString()
-        });
-        renderReportsTable(); renderStats();
-        if (typeof renderMonitoringTable === 'function') renderMonitoringTable();
-        toast('Perubahan disimpan.');
-      } else {
-        toast('Perubahan disimpan lokal. Akan disinkron saat online.');
-      }
-    } catch (_){
-      toast('Offline: perubahan disimpan lokal dan akan disinkron.');
-    } finally {
-      unlock();
-      doClose();
-    }
+    toast('Perubahan disimpan lokal. Masuk antrean sinkron.');
+    unlock();
+    doClose();
   });
 }
 
@@ -647,26 +700,22 @@ async function deleteReportFlow({ key, id }) {
 
   // Hapus lokal dulu (optimistic)
   DB.deleteReportByKey(key);
+  DB.removePendingByKey(key);
+  DB.addPending({
+    _key: `DELETE|${row.id || key}`,
+    _op: 'delete',
+    id: row.id || id || '',
+    nik: row.nik,
+    report_date: row.report_date,
+    send_date: row.send_date || '',
+    send_time: row.send_time || '',
+    score: row.score || ''
+  });
   renderReportsTable();
   renderStats();
-
-  // Coba hapus ke server (gunakan id bila ada; fallback nik+report_date)
-  try{
-    const res = await Loader.withLoading('Menghapus laporan...', apiPost({
-      action: 'deleteReport',
-      id: row.id || id || '',
-      nik: row.nik,
-      report_date: row.report_date
-    }));
-    if (res && res.ok){
-      toast('Laporan dihapus.');
-    } else {
-      // kalau backend belum dukung delete: informasikan
-      toast('Laporan dihapus lokal. Backend tidak mengonfirmasi penghapusan.');
-    }
-  } catch(_){
-    toast('Offline: laporan terhapus di perangkat. Sinkron nanti bisa mengembalikan dari server jika belum terhapus di sana.');
-  }
+  renderQueueInfo();
+  if (typeof renderMonitoringTable === 'function') renderMonitoringTable();
+  toast('Laporan dihapus lokal. Masuk antrean sinkron.');
 }
 
 
@@ -1030,9 +1079,19 @@ function renderDistributionChart(agg){
   const counts = buckets.map(b => agg.filter(p => b.where(p.total)).length);
 
   if (renderDistributionChart._chart) renderDistributionChart._chart.destroy();
+  const chartColors = [SCORE_DONUT_COLORS.hijau, SCORE_DONUT_COLORS.kuning, SCORE_DONUT_COLORS.merah, SCORE_DONUT_COLORS.hitam];
   const chart = new Chart(ctx, {
     type:'doughnut',
-    data:{ labels:buckets.map(b=>b.label), datasets:[{ data:counts }] },
+    data:{
+      labels:buckets.map(b=>b.label),
+      datasets:[{
+        data:counts,
+        backgroundColor: chartColors,
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        hoverOffset: 8
+      }]
+    },
     options:{
       responsive:true,
       plugins:{ legend:{ position:'bottom' } },
@@ -1297,7 +1356,7 @@ function renderReportsTable(){
         ${(r.isSynced||r.synced_at)?'Tersinkron':'Belum Sync'}</span></td>
       <td>
         <button class="btn btn-outline btn-sm" data-act="edit" data-id="${r.id||''}" data-key="${key}"><i class="fas fa-edit"></i></button>
-        <button class="btn btn-outline btn-sm" data-act="delete" data-id="${r.id||''}" data-key="${key}"><i class="fas fa-trash"></i></button>
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${r.id||''}" data-key="${key}"><i class="fas fa-trash"></i></button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -1422,14 +1481,26 @@ function renderFailedSyncPage(){
       const row = DB.getFailed().find(x=>x._key===key);
       if (!row) return;
       try{
-        const res = await Loader.withLoading('Mencoba sync ulang...', apiPost({
-          action:'upsertReport',
-          nik:row.nik, report_date:row.report_date, send_date:row.send_date, send_time:row.send_time, score:row.score||'',
-          markSynced: true
-        }));
+        const res = await Loader.withLoading('Mencoba sync ulang...', apiPost(
+          row && row._op === 'delete'
+            ? {
+                action:'deleteReport',
+                id:row.id || '',
+                nik:row.nik,
+                report_date:row.report_date
+              }
+            : {
+                action:'upsertReport',
+                id:row.id || '',
+                nik:row.nik, report_date:row.report_date, send_date:row.send_date, send_time:row.send_time, score:row.score||'',
+                markSynced: true
+              }
+        ));
         if (res && res.ok){
           DB.removeFailedByKey(key);
-          DB.upsertReportLocal({ ...row, id: res.id || row.id, isSynced:true, synced_at:new Date().toISOString() });
+          if (!(row && row._op === 'delete')) {
+            DB.upsertReportLocal({ ...row, id: res.id || row.id, isSynced:true, synced_at:new Date().toISOString() });
+          }
           renderFailedSyncPage(); renderReportsTable(); renderStats(); renderQueueInfo();
           toast('Berhasil disinkron.');
         } else {
@@ -1669,11 +1740,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tanggal Laporan (default: kemarin)
   const rpt = $('#report-date');
   if (rpt && window.flatpickr) {
-    const kemarin = new Date(); kemarin.setDate(kemarin.getDate()-1);
     flatpickr.localize(flatpickr.l10ns.id);
     flatpickr(rpt, {
       dateFormat: 'd/m/Y',
-      defaultDate: kemarin,
+      defaultDate: getDefaultReportDate(),
       allowInput: true
     });
   }
@@ -1685,7 +1755,7 @@ document.addEventListener('DOMContentLoaded', () => {
       enableTime: true,
       time_24hr: true,
       dateFormat: 'd/m/Y H:i',
-      defaultDate: new Date(),
+      defaultDate: getDefaultSendDateTime(),
       minuteIncrement: 1,
       allowInput: true
     });
@@ -1787,31 +1857,14 @@ if (reportForm) {
 
     // ⬇️ HANYA LOKAL + masukkan ke antrean pending
     DB.upsertReportLocal(localObj);
-    DB.addPending(localObj);
+    upsertPendingReport(localObj);
     renderReportsTable(); renderStats(); renderQueueInfo();
     toast('Tersimpan lokal. Masuk antrean sinkron.');
 
-    // reset form
+    // reset form + kembalikan tanggal/jam default terbaru
     this.reset();
     if (infoBox) infoBox.style.display = 'none';
-    const kemarin = new Date(); kemarin.setDate(kemarin.getDate()-1);
-    if (window.flatpickr) {
-      if ($('#report-date') && $('#report-date')._flatpickr) $('#report-date')._flatpickr.setDate(kemarin, true);
-      if ($('#send-datetime') && $('#send-datetime')._flatpickr) $('#send-datetime')._flatpickr.setDate(new Date(), true);
-    }
-
-    // Auto fokus kembali ke field NIK agar input laporan berikutnya lebih cepat
-    const nikField = $('#nik');
-    if (nikField) {
-      requestAnimationFrame(() => {
-        nikField.focus();
-        nikField.select?.();
-      });
-      setTimeout(() => {
-        nikField.focus();
-        nikField.select?.();
-      }, 50);
-    }
+    resetReportEntryFields();
 
     unlockBtn();
   });
@@ -1829,20 +1882,33 @@ async function syncAll(){
     let done = 0;
     for (const r of pending){
       try{
-        // kirim dengan markSynced:true agar backend memberi synced_at
-        const res = await apiPost({ 
-          action:'upsertReport',
-          nik:r.nik, report_date:r.report_date, send_date:r.send_date, send_time:r.send_time, score:r.score||'',
-          markSynced: true
-        });
-        if (res && res.ok){
-          // tandai lokal sukses
-          DB.removePendingByKey(r._key);
-          DB.upsertReportLocal({ ...r, id: res.id || r.id, isSynced:true, synced_at:new Date().toISOString() });
+        let res;
+        if (r && r._op === 'delete') {
+          res = await apiPost({
+            action:'deleteReport',
+            ...buildDeletePayloadForServer(r)
+          });
+          if (res && res.ok){
+            DB.removePendingByKey(r._key);
+          } else {
+            DB.removePendingByKey(r._key);
+            DB.addFailed({ ...r, reason: (res && (res.error || res.message)) || 'unknown' });
+          }
         } else {
-          // pindah ke antrean gagal
-          DB.removePendingByKey(r._key);
-          DB.addFailed({ ...r, reason: (res && res.error) || 'unknown' });
+          // kirim dengan markSynced:true agar backend memberi synced_at
+          res = await apiPost({ 
+            action:'upsertReport',
+            ...buildReportPayloadForServer(r, { markSynced: true })
+          });
+          if (res && res.ok){
+            // tandai lokal sukses
+            DB.removePendingByKey(r._key);
+            DB.upsertReportLocal({ ...r, id: res.id || r.id, isSynced:true, synced_at:new Date().toISOString() });
+          } else {
+            // pindah ke antrean gagal
+            DB.removePendingByKey(r._key);
+            DB.addFailed({ ...r, reason: (res && (res.error || res.message)) || 'unknown' });
+          }
         }
       } catch(err){
         // jaringan error → pindahkan ke failed
