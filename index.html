@@ -367,6 +367,65 @@
           </div>
         </div>
 
+
+        <!-- Quick Input Page -->
+        <div id="quickinput-page" class="page">
+          <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <h3>Input Cepat Tanpa Ketik</h3>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-sm" id="btn-quick-back-input"><i class="fas fa-arrow-left"></i> Ke Input Biasa</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btn-quick-reset-memory"><i class="fas fa-rotate-left"></i> Reset Pilihan</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="quick-input-layout">
+                <div class="quick-panel">
+                  <div class="quick-section-title">1. Pilih Kegiatan (Program)</div>
+                  <div id="quick-programs" class="quick-chip-wrap"></div>
+                </div>
+
+                <div class="quick-panel">
+                  <div class="quick-section-title">2. Pilih Peserta</div>
+                  <div id="quick-participants-meta" class="quick-muted">Pilih program terlebih dahulu.</div>
+                  <div id="quick-participants" class="quick-participant-grid"></div>
+                </div>
+
+                <div class="quick-grid-2">
+                  <div class="quick-panel">
+                    <div class="quick-section-title">3. Tanggal Laporan</div>
+                    <div id="quick-report-calendar" class="quick-calendar"></div>
+                  </div>
+                  <div class="quick-panel">
+                    <div class="quick-section-title">4. Tanggal Kirim</div>
+                    <div id="quick-send-calendar" class="quick-calendar"></div>
+                  </div>
+                </div>
+
+                <div class="quick-grid-2">
+                  <div class="quick-panel">
+                    <div class="quick-section-title">5. Jam Kirim - Jam</div>
+                    <div id="quick-hour-grid" class="time-grid"></div>
+                  </div>
+                  <div class="quick-panel">
+                    <div class="quick-section-title">6. Jam Kirim - Menit</div>
+                    <div id="quick-minute-grid" class="time-grid time-grid-minutes"></div>
+                  </div>
+                </div>
+
+                <div class="quick-panel">
+                  <div class="quick-section-title">Ringkasan Pilihan</div>
+                  <div id="quick-summary" class="quick-summary"></div>
+                  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-primary" id="btn-quick-save"><i class="fas fa-save"></i> Simpan Laporan</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
         <!-- Failed Sync Page -->
         <div id="failedsync-page" class="page">
         <div class="card">
@@ -441,6 +500,24 @@
             </div>
           </div>
         </div>
+
+
+  <button type="button" id="quick-access-btn" class="quick-access-btn" title="Input cepat">
+    <i class="fas fa-gear"></i>
+  </button>
+
+  <div id="quick-access-modal" class="quick-access-modal" style="display:none;">
+    <div class="quick-access-card">
+      <div class="quick-access-title">Akses Input Cepat</div>
+      <div class="quick-access-text">Masukkan password untuk membuka halaman input klik saja.</div>
+      <input type="password" id="quick-access-password" class="form-control" placeholder="Password"/>
+      <div class="quick-access-actions">
+        <button type="button" class="btn btn-outline" id="quick-access-cancel">Batal</button>
+        <button type="button" class="btn btn-primary" id="quick-access-submit">Buka</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- App -->
   <script src="https://unpkg.com/dexie@3/dist/dexie.min.js"></script>

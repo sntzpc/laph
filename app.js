@@ -1858,6 +1858,7 @@ if (reportForm) {
     // ⬇️ HANYA LOKAL + masukkan ke antrean pending
     DB.upsertReportLocal(localObj);
     upsertPendingReport(localObj);
+    bumpPickCount(nik);
     renderReportsTable(); renderStats(); renderQueueInfo();
     toast('Tersimpan lokal. Masuk antrean sinkron.');
 
@@ -2732,3 +2733,365 @@ if (_origRenderMonitoringTable) {
   // tetap coba memunculkan tombol setelah sedikit jeda
   setTimeout(ensureMonitoringPrintButton, 800);
 }
+
+/* ===================== 18) QUICK INPUT PAGE (CLICK ONLY) ===================== */
+const QUICK_INPUT = (() => {
+  const MEM_KEY = 'kmp.quickInput.memory';
+  const AUTH_KEY = 'kmp.quickInput.auth';
+  const SESSION_COUNT_KEY = 'kmp.quickInput.sessionCounts';
+  const PASSWORD = 'userL1234';
+
+  const state = {
+    selectedProgram: '',
+    selectedNik: '',
+    reportDate: toDDMMYYYY(getDefaultReportDate()),
+    sendDate: toDDMMYYYY(getDefaultSendDateTime()),
+    sendHour: dd(getDefaultSendDateTime().getHours()),
+    sendMinute: dd(getDefaultSendDateTime().getMinutes()),
+    viewReportMonth: new Date(getDefaultReportDate().getFullYear(), getDefaultReportDate().getMonth(), 1),
+    viewSendMonth: new Date(getDefaultSendDateTime().getFullYear(), getDefaultSendDateTime().getMonth(), 1)
+  };
+
+  function loadMemory(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(MEM_KEY) || '{}');
+      if (saved && typeof saved === 'object') Object.assign(state, saved);
+    }catch(_){ }
+  }
+  function saveMemory(){
+    try {
+      localStorage.setItem(MEM_KEY, JSON.stringify({
+        selectedProgram: state.selectedProgram || '',
+        selectedNik: state.selectedNik || '',
+        reportDate: state.reportDate || '',
+        sendDate: state.sendDate || '',
+        sendHour: state.sendHour || '00',
+        sendMinute: state.sendMinute || '00',
+        viewReportMonth: state.viewReportMonth ? state.viewReportMonth.toISOString() : '',
+        viewSendMonth: state.viewSendMonth ? state.viewSendMonth.toISOString() : ''
+      }));
+    } catch(_){ }
+  }
+  function restoreViewMonths(){
+    if (typeof state.viewReportMonth === 'string' && state.viewReportMonth) state.viewReportMonth = new Date(state.viewReportMonth);
+    if (!(state.viewReportMonth instanceof Date) || isNaN(state.viewReportMonth)) state.viewReportMonth = new Date(getDefaultReportDate().getFullYear(), getDefaultReportDate().getMonth(), 1);
+    if (typeof state.viewSendMonth === 'string' && state.viewSendMonth) state.viewSendMonth = new Date(state.viewSendMonth);
+    if (!(state.viewSendMonth instanceof Date) || isNaN(state.viewSendMonth)) state.viewSendMonth = new Date(getDefaultSendDateTime().getFullYear(), getDefaultSendDateTime().getMonth(), 1);
+  }
+
+
+  function loadSessionCounts(){
+    try{
+      const raw = JSON.parse(sessionStorage.getItem(SESSION_COUNT_KEY) || '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    }catch(_){ return {}; }
+  }
+  function saveSessionCounts(map){
+    try{ sessionStorage.setItem(SESSION_COUNT_KEY, JSON.stringify(map || {})); }catch(_){ }
+  }
+  function getPickCount(nik){
+    const map = loadSessionCounts();
+    return Math.max(0, Number(map[String(nik||'')] || 0) || 0);
+  }
+  function bumpPickCount(nik){
+    const key = String(nik || '').trim();
+    if (!key) return 0;
+    const map = loadSessionCounts();
+    map[key] = Math.max(0, Number(map[key] || 0) || 0) + 1;
+    saveSessionCounts(map);
+    return map[key];
+  }
+  function pickLevelClass(count){
+    const n = Math.max(0, Number(count) || 0);
+    if (n <= 0) return '';
+    return ' picked picked-' + String(Math.min(n, 5));
+  }
+
+  function isAuthorized(){ return localStorage.getItem(AUTH_KEY) === '1'; }
+  function setAuthorized(v){ localStorage.setItem(AUTH_KEY, v ? '1' : '0'); }
+
+  function participants(){ return DB.getParticipants().filter(p => String(p.is_active) !== 'false'); }
+  function getPrograms(){ return uniq(participants().map(p => String(p.program||'').trim()).filter(Boolean)).sort((a,b)=>a.localeCompare(b)); }
+  function getSelectedParticipant(){ return participants().find(p => String(p.nik||'') === String(state.selectedNik||'')) || null; }
+  function participantsByProgram(){
+    if (!state.selectedProgram) return [];
+    return participants()
+      .filter(p => String(p.program||'').trim() === state.selectedProgram)
+      .sort((a,b)=> String(a.nama||'').localeCompare(String(b.nama||'')) || String(a.nik||'').localeCompare(String(b.nik||'')));
+  }
+
+  function openPage(){
+    document.querySelectorAll('.sidebar-menu a').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const page = document.getElementById('quickinput-page');
+    if (page) page.classList.add('active');
+    const contentEl = document.querySelector('.content');
+    if (contentEl) contentEl.scrollTop = 0;
+    renderAll();
+  }
+  function goNormalInput(){
+    const link = document.querySelector('.sidebar-menu a[data-page="input"]');
+    if (link) link.click();
+  }
+
+  function showAccessModal(){
+    if (isAuthorized()) return openPage();
+    const modal = document.getElementById('quick-access-modal');
+    const input = document.getElementById('quick-access-password');
+    if (modal) modal.style.display = 'flex';
+    if (input){ input.value=''; setTimeout(()=>input.focus(), 20); }
+  }
+  function hideAccessModal(){
+    const modal = document.getElementById('quick-access-modal');
+    const input = document.getElementById('quick-access-password');
+    if (modal) modal.style.display = 'none';
+    if (input) input.value = '';
+  }
+  function submitPassword(){
+    const input = document.getElementById('quick-access-password');
+    const val = (input?.value || '').trim();
+    if (val !== PASSWORD) return toast('Password halaman input cepat tidak sesuai.');
+    setAuthorized(true);
+    hideAccessModal();
+    openPage();
+  }
+
+  function renderPrograms(){
+    const wrap = document.getElementById('quick-programs');
+    if (!wrap) return;
+    const list = getPrograms();
+    wrap.innerHTML = list.length ? '' : '<div class="quick-muted">Belum ada master program.</div>';
+    list.forEach(name => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'quick-chip' + (state.selectedProgram === name ? ' active' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', ()=>{
+        state.selectedProgram = name;
+        const rows = participantsByProgram();
+        if (!rows.some(p => String(p.nik||'') === String(state.selectedNik||''))) state.selectedNik = rows[0]?.nik || '';
+        saveMemory();
+        renderPrograms();
+        renderParticipants();
+        renderSummary();
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function renderParticipants(){
+    const wrap = document.getElementById('quick-participants');
+    const meta = document.getElementById('quick-participants-meta');
+    if (!wrap || !meta) return;
+    const rows = participantsByProgram();
+    meta.textContent = state.selectedProgram
+      ? `${rows.length} peserta pada program ${state.selectedProgram}`
+      : 'Pilih program terlebih dahulu.';
+    wrap.innerHTML = '';
+    if (!state.selectedProgram){
+      wrap.innerHTML = '<div class="quick-muted">Belum ada program yang dipilih.</div>';
+      return;
+    }
+    if (!rows.length){
+      wrap.innerHTML = '<div class="quick-muted">Tidak ada peserta aktif pada program ini.</div>';
+      return;
+    }
+    rows.forEach(p => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      const pickCount = getPickCount(p.nik);
+      card.className = 'quick-participant-card' + pickLevelClass(pickCount) + (String(state.selectedNik||'') === String(p.nik||'') ? ' active' : '');
+      card.setAttribute('data-picked-count', String(pickCount));
+      card.innerHTML = `<div class="q-name">${p.nama || '-'}</div><div class="q-meta">${p.nik || '-'} • ${p.unit || '-'}${p.divisi ? ' • ' + p.divisi : ''}</div>`;
+      card.addEventListener('click', ()=>{
+        state.selectedNik = p.nik || '';
+        saveMemory();
+        renderParticipants();
+        renderSummary();
+      });
+      wrap.appendChild(card);
+    });
+  }
+
+  function parseDDMMYYYY(value){
+    const m = String(value||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    return new Date(+m[3], +m[2]-1, +m[1]);
+  }
+  function monthTitle(d){ return d.toLocaleDateString('id-ID',{month:'long', year:'numeric'}); }
+  function sameDate(a,b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+
+  function renderCalendar(targetId, valueKey, viewKey){
+    const root = document.getElementById(targetId);
+    if (!root) return;
+    const view = state[viewKey];
+    const selected = parseDDMMYYYY(state[valueKey]);
+    const today = new Date();
+    const first = new Date(view.getFullYear(), view.getMonth(), 1);
+    const start = new Date(first);
+    const offset = (first.getDay() + 6) % 7; // Monday first
+    start.setDate(first.getDate() - offset);
+
+    root.innerHTML = `
+      <div class="quick-cal-head">
+        <div class="quick-cal-title">${monthTitle(view)}</div>
+        <div class="quick-cal-nav">
+          <button type="button" data-nav="prev"><i class="fas fa-chevron-left"></i></button>
+          <button type="button" data-nav="next"><i class="fas fa-chevron-right"></i></button>
+        </div>
+      </div>
+      <div class="quick-cal-weekdays"><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div><div>Min</div></div>
+      <div class="quick-cal-days"></div>
+    `;
+    root.querySelector('[data-nav="prev"]').addEventListener('click', ()=>{
+      state[viewKey] = new Date(view.getFullYear(), view.getMonth()-1, 1);
+      saveMemory(); renderCalendar(targetId, valueKey, viewKey);
+    });
+    root.querySelector('[data-nav="next"]').addEventListener('click', ()=>{
+      state[viewKey] = new Date(view.getFullYear(), view.getMonth()+1, 1);
+      saveMemory(); renderCalendar(targetId, valueKey, viewKey);
+    });
+    const daysWrap = root.querySelector('.quick-cal-days');
+    for(let i=0;i<42;i++){
+      const d = new Date(start);
+      d.setDate(start.getDate()+i);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'quick-day';
+      if (d.getMonth() !== view.getMonth()) btn.classList.add('muted');
+      if (sameDate(d, today)) btn.classList.add('today');
+      if (selected && sameDate(d, selected)) btn.classList.add('active');
+      btn.textContent = String(d.getDate());
+      btn.addEventListener('click', ()=>{
+        state[valueKey] = toDDMMYYYY(d);
+        state[viewKey] = new Date(d.getFullYear(), d.getMonth(), 1);
+        saveMemory();
+        renderCalendar(targetId, valueKey, viewKey);
+        renderSummary();
+      });
+      daysWrap.appendChild(btn);
+    }
+  }
+
+  function renderTimeGrid(){
+    const hourWrap = document.getElementById('quick-hour-grid');
+    const minuteWrap = document.getElementById('quick-minute-grid');
+    if (hourWrap){
+      hourWrap.innerHTML = '';
+      for(let i=0;i<24;i++){
+        const v = dd(i);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = state.sendHour === v ? 'active' : '';
+        btn.textContent = v;
+        btn.addEventListener('click', ()=>{ state.sendHour = v; saveMemory(); renderTimeGrid(); renderSummary(); });
+        hourWrap.appendChild(btn);
+      }
+    }
+    if (minuteWrap){
+      minuteWrap.innerHTML = '';
+      for(let i=0;i<60;i++){
+        const v = dd(i);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = state.sendMinute === v ? 'active' : '';
+        btn.textContent = v;
+        btn.addEventListener('click', ()=>{ state.sendMinute = v; saveMemory(); renderTimeGrid(); renderSummary(); });
+        minuteWrap.appendChild(btn);
+      }
+    }
+  }
+
+  function renderSummary(){
+    const box = document.getElementById('quick-summary');
+    if (!box) return;
+    const p = getSelectedParticipant();
+    const sendTime = `${state.sendHour}:${state.sendMinute}`;
+    box.innerHTML = `
+      <div class="quick-summary-item"><div class="quick-summary-label">Program</div><div class="quick-summary-value">${state.selectedProgram || '-'}</div></div>
+      <div class="quick-summary-item"><div class="quick-summary-label">Peserta</div><div class="quick-summary-value">${p ? (p.nama || '-') : '-'}</div></div>
+      <div class="quick-summary-item"><div class="quick-summary-label">NIK / Unit</div><div class="quick-summary-value">${p ? ((p.nik||'-') + ' / ' + (p.unit||'-')) : '-'}</div></div>
+      <div class="quick-summary-item"><div class="quick-summary-label">Tanggal Laporan</div><div class="quick-summary-value">${state.reportDate || '-'}</div></div>
+      <div class="quick-summary-item"><div class="quick-summary-label">Tanggal Kirim</div><div class="quick-summary-value">${state.sendDate || '-'}</div></div>
+      <div class="quick-summary-item"><div class="quick-summary-label">Jam Kirim</div><div class="quick-summary-value">${sendTime}</div></div>
+    `;
+  }
+
+  function renderAll(){
+    restoreViewMonths();
+    const progs = getPrograms();
+    if (!state.selectedProgram || !progs.includes(state.selectedProgram)) state.selectedProgram = progs[0] || '';
+    const rows = participantsByProgram();
+    if (!rows.some(p => String(p.nik||'') === String(state.selectedNik||''))) state.selectedNik = rows[0]?.nik || '';
+    saveMemory();
+    renderPrograms();
+    renderParticipants();
+    renderCalendar('quick-report-calendar', 'reportDate', 'viewReportMonth');
+    renderCalendar('quick-send-calendar', 'sendDate', 'viewSendMonth');
+    renderTimeGrid();
+    renderSummary();
+  }
+
+  function resetMemory(){
+    const rpt = getDefaultReportDate();
+    const snd = getDefaultSendDateTime();
+    state.selectedProgram = '';
+    state.selectedNik = '';
+    state.reportDate = toDDMMYYYY(rpt);
+    state.sendDate = toDDMMYYYY(snd);
+    state.sendHour = dd(snd.getHours());
+    state.sendMinute = dd(snd.getMinutes());
+    state.viewReportMonth = new Date(rpt.getFullYear(), rpt.getMonth(), 1);
+    state.viewSendMonth = new Date(snd.getFullYear(), snd.getMonth(), 1);
+    saveMemory();
+    renderAll();
+    toast('Pilihan input cepat direset.');
+  }
+
+  function saveReport(){
+    const p = getSelectedParticipant();
+    if (!state.selectedProgram) return toast('Pilih program terlebih dahulu.');
+    if (!p || !p.nik) return toast('Pilih peserta terlebih dahulu.');
+    if (!state.reportDate || !state.sendDate) return toast('Tanggal laporan dan tanggal kirim wajib dipilih.');
+    const send_time = `${state.sendHour}:${state.sendMinute}`;
+    const report_date = fmtWIBddmmyyyy(state.reportDate);
+    const send_date = fmtWIBddmmyyyy(state.sendDate);
+    const nik = String(p.nik || '').trim();
+    const { score } = computeDailyScore(report_date, send_date, send_time);
+    const _key = nik + '|' + report_date;
+    const localObj = {
+      id: localId(),
+      nik, report_date, send_date, send_time, score,
+      isSynced: false, synced_at: '', _key,
+      created_locally_at: new Date().toISOString()
+    };
+    DB.upsertReportLocal(localObj);
+    upsertPendingReport(localObj);
+    bumpPickCount(nik);
+    renderReportsTable(); renderStats(); renderQueueInfo();
+    if (typeof renderMonitoringTable === 'function') renderMonitoringTable();
+    renderParticipants();
+    renderSummary();
+    toast('Tersimpan lokal dari Input Cepat. Masuk antrean sinkron.');
+    saveMemory();
+  }
+
+  function bind(){
+    loadMemory();
+    restoreViewMonths();
+    document.getElementById('quick-access-btn')?.addEventListener('click', showAccessModal);
+    document.getElementById('quick-access-cancel')?.addEventListener('click', hideAccessModal);
+    document.getElementById('quick-access-submit')?.addEventListener('click', submitPassword);
+    document.getElementById('quick-access-password')?.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') submitPassword(); });
+    document.getElementById('quick-access-modal')?.addEventListener('click', (e)=>{ if (e.target?.id === 'quick-access-modal') hideAccessModal(); });
+    document.getElementById('btn-quick-back-input')?.addEventListener('click', goNormalInput);
+    document.getElementById('btn-quick-reset-memory')?.addEventListener('click', resetMemory);
+    document.getElementById('btn-quick-save')?.addEventListener('click', saveReport);
+  }
+
+  return { bind, renderAll, showAccessModal };
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  QUICK_INPUT.bind();
+});
