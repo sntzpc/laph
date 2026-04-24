@@ -2739,7 +2739,7 @@ const QUICK_INPUT = (() => {
   const MEM_KEY = 'kmp.quickInput.memory';
   const AUTH_KEY = 'kmp.quickInput.auth';
   const SESSION_COUNT_KEY = 'kmp.quickInput.sessionCounts';
-  const PASSWORD = 'userL1234';
+  const PASSWORD = 'lap1234';
 
   const state = {
     selectedProgram: '',
