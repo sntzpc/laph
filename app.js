@@ -179,6 +179,30 @@ function focusManualNikInput(){
   setTimeout(doFocus, 80);
   setTimeout(doFocus, 250);
 }
+
+// Helper global untuk penghitung peserta yang sudah dipilih pada sesi berjalan.
+// Dipakai oleh simpan manual agar tidak error "bumpPickCount is not defined".
+// Key-nya dibuat sama dengan modul Input Cepat supaya fitur arsiran nama tetap kompatibel.
+const QUICK_INPUT_SESSION_COUNT_KEY_GLOBAL = 'kmp.quickInput.sessionCounts';
+function loadQuickInputSessionCounts(){
+  try{
+    const raw = JSON.parse(sessionStorage.getItem(QUICK_INPUT_SESSION_COUNT_KEY_GLOBAL) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  }catch(_){
+    return {};
+  }
+}
+function saveQuickInputSessionCounts(map){
+  try{ sessionStorage.setItem(QUICK_INPUT_SESSION_COUNT_KEY_GLOBAL, JSON.stringify(map || {})); }catch(_){ }
+}
+function bumpPickCount(nik){
+  const key = String(nik || '').trim();
+  if (!key) return 0;
+  const map = loadQuickInputSessionCounts();
+  map[key] = Math.max(0, Number(map[key] || 0) || 0) + 1;
+  saveQuickInputSessionCounts(map);
+  return map[key];
+}
 function upsertPendingReport(row, oldKey){
   const currentKey = row && row._key ? row._key : (row.nik + '|' + row.report_date);
   if (oldKey && oldKey !== currentKey) DB.removePendingByKey(oldKey);
