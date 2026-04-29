@@ -137,24 +137,47 @@ function getDefaultSendDateTime(){
   return new Date();
 }
 function resetReportEntryFields(){
+  // Reset KHUSUS form Input Laporan manual.
+  // Tidak dipakai oleh halaman Input Cepat, sehingga fitur input cepat tetap aman.
   const rpt = $('#report-date');
   const snd = $('#send-datetime');
   const nik = $('#nik');
+  const sug = $('#nik-suggestions');
+  const info = $('#participant-info');
+
+  if (nik) nik.value = '';
+  if (sug){ sug.innerHTML = ''; sug.style.display = 'none'; }
+  if (info) info.style.display = 'none';
+  ['info-nama','info-program','info-divisi','info-unit','info-region','info-group'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.textContent = '-';
+  });
+
   if (rpt){
-    if (rpt._flatpickr) rpt._flatpickr.setDate(getDefaultReportDate(), true);
+    if (rpt._flatpickr) rpt._flatpickr.setDate(getDefaultReportDate(), false);
     else rpt.value = toDDMMYYYY(getDefaultReportDate());
   }
   if (snd){
-    if (snd._flatpickr) snd._flatpickr.setDate(getDefaultSendDateTime(), true);
-    else {
-      const now = getDefaultSendDateTime();
-      snd.value = `${toDDMMYYYY(now)} ${dd(now.getHours())}:${dd(now.getMinutes())}`;
-    }
+    const now = getDefaultSendDateTime();
+    if (snd._flatpickr) snd._flatpickr.setDate(now, false);
+    else snd.value = `${toDDMMYYYY(now)} ${dd(now.getHours())}:${dd(now.getMinutes())}`;
   }
-  if (nik){
-    requestAnimationFrame(() => { nik.focus(); nik.select?.(); });
-    setTimeout(() => { nik.focus(); nik.select?.(); }, 50);
-  }
+
+  focusManualNikInput();
+}
+
+function focusManualNikInput(){
+  const nik = $('#nik');
+  if (!nik) return;
+  // Fokus dibuat bertahap agar tetap berhasil setelah alert/toast, render tabel,
+  // transisi tab, atau flatpickr selesai menggambar ulang input.
+  const doFocus = () => {
+    try { nik.focus({ preventScroll: true }); } catch(_) { nik.focus(); }
+    try { nik.select(); } catch(_) {}
+  };
+  requestAnimationFrame(doFocus);
+  setTimeout(doFocus, 80);
+  setTimeout(doFocus, 250);
 }
 function upsertPendingReport(row, oldKey){
   const currentKey = row && row._key ? row._key : (row.nik + '|' + row.report_date);
@@ -1828,48 +1851,74 @@ const reportForm = $('#report-form');
 if (reportForm) {
   reportForm.addEventListener('submit', async function(e){
     e.preventDefault();
-    const submitBtn = this.querySelector('button[type="submit"]');
+    const form = this;
+    const submitBtn = form.querySelector('button[type="submit"]');
     const unlockBtn = lockButton(submitBtn);
 
-    const nik = ( $('#nik')?.value || '' ).trim();
-    const reportDateRaw = ( $('#report-date')?.value || '' ).trim();
-    const sendDateTimeRaw = ( $('#send-datetime')?.value || '' ).trim();
+    try {
+      const nik = ( $('#nik')?.value || '' ).trim();
+      const reportDateRaw = ( $('#report-date')?.value || '' ).trim();
+      const sendDateTimeRaw = ( $('#send-datetime')?.value || '' ).trim();
 
-    if (!nik || !reportDateRaw){
-      unlockBtn(); return toast('NIK dan Tanggal Laporan wajib diisi.');
+      if (!nik || !reportDateRaw){
+        toast('NIK dan Tanggal Laporan wajib diisi.');
+        focusManualNikInput();
+        return;
+      }
+
+      // Normalisasi tanggal & jam (jam wajib tampil hh:mm)
+      const report_date = fmtWIBddmmyyyy(reportDateRaw); // dd/mm/yyyy
+      const parsedSend = parseSendDateTime(sendDateTimeRaw);
+      const send_date = fmtWIBddmmyyyy(parsedSend.send_date);
+      const send_time = coerceHHMM(parsedSend.send_time);
+
+      const { score } = computeDailyScore(report_date, send_date, send_time);
+      const _key = nik + '|' + report_date;
+
+      const localObj = {
+        id: localId(),
+        nik, report_date, send_date, send_time, score,
+        isSynced: false, synced_at: '', _key,
+        created_locally_at: new Date().toISOString()
+      };
+
+      // HANYA LOKAL + masukkan ke antrean pending.
+      // Blok ini tetap sama alurnya dengan versi sebelumnya agar tidak mengganggu sync/input cepat.
+      DB.upsertReportLocal(localObj);
+      upsertPendingReport(localObj);
+      bumpPickCount(nik);
+
+      // Reset dilakukan SEBELUM render tambahan agar form manual langsung siap input baru,
+      // walaupun render tabel/statistik ada error kecil di browser tertentu.
+      form.reset();
+      resetReportEntryFields();
+
+      try { renderReportsTable(); } catch(err){ console.warn('renderReportsTable setelah simpan gagal:', err); }
+      try { renderStats(); } catch(err){ console.warn('renderStats setelah simpan gagal:', err); }
+      try { renderQueueInfo(); } catch(err){ console.warn('renderQueueInfo setelah simpan gagal:', err); }
+
+      toast('Tersimpan lokal. Masuk antrean sinkron. Form siap untuk input berikutnya.');
+      focusManualNikInput();
+    } catch (err) {
+      console.error('Gagal menyimpan laporan manual:', err);
+      toast('Gagal menyimpan laporan: ' + (err && err.message ? err.message : err));
+      focusManualNikInput();
+    } finally {
+      unlockBtn();
     }
-
-    // Normalisasi tanggal & jam (jam wajib tampil hh:mm)
-    const report_date = fmtWIBddmmyyyy(reportDateRaw); // dd/mm/yyyy
-    const p = parseSendDateTime(sendDateTimeRaw);
-    const send_date = fmtWIBddmmyyyy(p.send_date);
-    const send_time = coerceHHMM(p.send_time);
-
-    const { score } = computeDailyScore(report_date, send_date, send_time);
-    const _key = nik + '|' + report_date;
-
-    const localObj = {
-      id: localId(),
-      nik, report_date, send_date, send_time, score,
-      isSynced: false, synced_at: '', _key,
-      created_locally_at: new Date().toISOString()
-    };
-
-    // ⬇️ HANYA LOKAL + masukkan ke antrean pending
-    DB.upsertReportLocal(localObj);
-    upsertPendingReport(localObj);
-    bumpPickCount(nik);
-    renderReportsTable(); renderStats(); renderQueueInfo();
-    toast('Tersimpan lokal. Masuk antrean sinkron.');
-
-    // reset form + kembalikan tanggal/jam default terbaru
-    this.reset();
-    if (infoBox) infoBox.style.display = 'none';
-    resetReportEntryFields();
-
-    unlockBtn();
   });
 }
+
+// Tombol Reset manual: hanya membersihkan form Input Laporan manual.
+document.addEventListener('DOMContentLoaded', () => {
+  const resetBtn = $('#btn-reset-form');
+  if (resetBtn && !resetBtn._manualResetBound){
+    resetBtn._manualResetBound = true;
+    resetBtn.addEventListener('click', () => resetReportEntryFields());
+  }
+  // Saat aplikasi pertama dibuka, siapkan kursor pada NIK manual.
+  focusManualNikInput();
+});
 
 
 /* ===================== 10) SYNC (PUSH pending → PULL semua) ===================== */
